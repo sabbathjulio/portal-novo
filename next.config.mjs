@@ -1,3 +1,4 @@
+// Trigger build for Vercel
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   images: { unoptimized: true } // Necessário para SSG
