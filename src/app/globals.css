@@ -1,0 +1,50 @@
+@import "tailwindcss";
+
+@theme {
+  --font-cinzel: var(--font-cinzel);
+  --font-inter: var(--font-inter);
+  --color-gold-primary: #D4AF37;
+  --color-background-midnight: #0B1120;
+}
+
+:root {
+  --background: #0B1120;
+  --foreground: #ffffff;
+  --gold-primary: #D4AF37;
+  --gold-glow: rgba(212, 175, 55, 0.15);
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* No v4, usamos o seletor diretamente ou @utility se quisermos no @apply */
+.font-cinzel {
+  font-family: var(--font-cinzel), serif;
+}
+
+.font-inter {
+  font-family: var(--font-inter), sans-serif;
+}
+
+.text-gold-primary {
+  color: var(--gold-primary);
+}
+
+.border-gold {
+  border-color: var(--gold-primary);
+}
+
+/* Glassmorphism manual para evitar erro de @apply do v4 */
+.glassmorphism {
+  background-color: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.glow-radial {
+  background: radial-gradient(circle, var(--gold-glow) 0%, transparent 70%);
+}
