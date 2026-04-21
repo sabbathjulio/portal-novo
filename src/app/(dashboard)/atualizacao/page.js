@@ -1,58 +1,65 @@
 "use client";
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import { supabase } from '@/lib/supabase';
 import { 
-  UploadCloud, Settings2, Database, AlertTriangle, 
-  CheckCircle2, FileSpreadsheet, PlayCircle, Loader2,
-  Copy, XCircle, ChevronRight, Info
+  FileSpreadsheet, Database, Loader2, ArrowRight, XCircle, 
+  CheckCircle2, Square, CheckSquare, Search, Info
 } from 'lucide-react';
 
-const SUPABASE_SCHEMA = {
-  processos: [
-    { label: "Pasta", value: "pasta" },
-    { label: "Reclamante", value: "reclamante" },
-    { label: "Réu Principal", value: "reu_principal" },
-    { label: "Unidade", value: "unidade" },
-    { label: "Data Admissão", value: "data_admissao" },
-    { label: "Data Demissão", value: "data_demissao" },
-    { label: "Função", value: "funcao" },
-    { label: "Fase Atual", value: "fase_atual" },
-    { label: "Status Geral", value: "status_geral" },
-    { label: "Risco", value: "risco" },
-    { label: "Observação", value: "observacao" }
-  ],
-  financeiro: [
-    { label: "Valor da Causa", value: "valor_causa" },
-    { label: "Valor do Acordo", value: "valor_acordo" },
-    { label: "Depósito Recursal", value: "deposito_recursal" },
-    { label: "Custas", value: "custas" },
-    { label: "Condenação", value: "condenacao" }
-  ],
-  audiencias: [
-    { label: "Tipo de Audiência", value: "tipo" },
-    { label: "Data/Hora (ISO)", value: "data_hora" },
-    { label: "Status", value: "status" }
-  ],
-  farol_documentacao: [
-    { label: "Status do Farol", value: "status_farol" },
-    { label: "Marcador de Urgência", value: "is_urgente" },
-    { label: "Observação Jurídica", value: "observacao_juridica" }
-  ]
+const COL_DICT = {
+  // PROCESSOS
+  reclamante: { t: 'processos', c: 'reclamante', l: 'Nome Reclamante' },
+  autor: { t: 'processos', c: 'reclamante', l: 'Nome Reclamante' },
+  reu: { t: 'processos', c: 'reu_principal', l: 'Réu Principal' },
+  empresa: { t: 'processos', c: 'reu_principal', l: 'Réu Principal' },
+  unidade: { t: 'processos', c: 'unidade', l: 'Unidade' },
+  fase: { t: 'processos', c: 'fase_atual', l: 'Fase' },
+  etapa: { t: 'processos', c: 'fase_atual', l: 'Fase' },
+  status_geral: { t: 'processos', c: 'status_geral', l: 'Status' },
+  risco: { t: 'processos', c: 'risco', l: 'Risco' },
+  funcao: { t: 'processos', c: 'funcao', l: 'Função' },
+  cargo: { t: 'processos', c: 'funcao', l: 'Função' },
+  admissao: { t: 'processos', c: 'data_admissao', l: 'Data Admissão' },
+  demissao: { t: 'processos', c: 'data_demissao', l: 'Data Demissão' },
+  // FINANCEIRO
+  causa: { t: 'financeiro', c: 'valor_causa', l: 'Valor da Causa' },
+  acordo: { t: 'financeiro', c: 'valor_acordo', l: 'Valor do Acordo' },
+  deposito: { t: 'financeiro', c: 'deposito_recursal', l: 'Depósito Recursal' },
+  custas: { t: 'financeiro', c: 'custas', l: 'Custas' },
+  condenacao: { t: 'financeiro', c: 'condenacao', l: 'Condenação' },
+  // AUDIENCIAS
+  tipo_aud: { t: 'audiencias', c: 'tipo', l: 'Tipo Audiência' },
+  aud_tipo: { t: 'audiencias', c: 'tipo', l: 'Tipo Audiência' },
+  data_aud: { t: 'audiencias', c: 'data_hora', l: 'Data Audiência' },
+  aud_data: { t: 'audiencias', c: 'data_hora', l: 'Data Audiência' }
 };
 
-export default function AtualizacaoUniversalPage() {
-  const [step, setStep] = useState(1);
-  const [fileData, setFileData] = useState(null); // { headers: [], rows: [] }
-  const [masterKeyCol, setMasterKeyCol] = useState('');
-  const [mapping, setMapping] = useState({}); // { [headerName]: { table: '', column: '' } }
-  
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [logs, setLogs] = useState({ success: 0, failed: 0, errors: [] });
+function autoFindMap(rawName) {
+   let name = String(rawName).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().replace(/\s+/g, '_');
+   for(let k of Object.keys(COL_DICT)) {
+      if (name.includes(k) || (k.length > 5 && name === k.substring(0, name.length))) {
+        return COL_DICT[k];
+      }
+   }
+   return null;
+}
 
-  // STEP 1: Upload e Leitura
+export default function ConciliacaoDadosPage() {
+  const [step, setStep] = useState(1);
+  const [fileData, setFileData] = useState(null);
+  const [masterCol, setMasterCol] = useState('');
+  
+  // Auditoria States
+  const [isLoadingDB, setIsLoadingDB] = useState(false);
+  const [dbFetchProgress, setDbFetchProgress] = useState(0);
+  const [diffs, setDiffs] = useState([]); // [{id, cnj, table, dbCol, colName, oldVal, newVal, checked}]
+  
+  // Exec State
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [finalStatus, setFinalStatus] = useState(null); // { updated: 0, errors: [] }
+
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -60,379 +67,374 @@ export default function AtualizacaoUniversalPage() {
     const reader = new FileReader();
     reader.onload = (evt) => {
       try {
-        const bstr = evt.target.result;
-        const wb = XLSX.read(bstr, { type: 'binary', cellDates: true });
+        const wb = XLSX.read(evt.target.result, { type: 'binary', cellDates: true });
         const ws = wb.Sheets[wb.SheetNames[0]];
         const data = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' });
         
         if (data.length < 2) throw new Error("Planilha vazia ou sem cabeçalho.");
         
-        // Encontrar cabeçalho real (primeira linha com dados relevantes)
         let headerIdx = 0;
         for(let i=0; i < data.length; i++){
-           if (data[i].filter(Boolean).length > 1) {
-              headerIdx = i;
-              break;
-           }
+           if (data[i].filter(Boolean).length > 2) { headerIdx = i; break; }
         }
         
         const headers = data[headerIdx].map(h => String(h).trim()).filter(Boolean);
-        const rows = data.slice(headerIdx + 1).filter(r => r.some(Boolean));
-        
-        // Converte array row para objeto espelhando o cabeçalho
-        const objRows = rows.map(r => {
-           const obj = {};
-           headers.forEach((h, i) => { obj[h] = r[i]; });
-           return obj;
+        const rows = data.slice(headerIdx + 1).filter(r => r.some(Boolean)).map(r => {
+           let obj = {}; headers.forEach((h, i) => obj[h] = r[i]); return obj;
         });
 
-        setFileData({ headers, rows: objRows });
-        
-        // Autodetect CNJ if possible
-        const possibleCNJ = headers.find(h => h.toLowerCase().includes('processo') || h.toLowerCase().includes('cnj') || h.toLowerCase().includes('protocolo'));
-        if (possibleCNJ) setMasterKeyCol(possibleCNJ);
-
-        setStep(2);
+        setFileData({ headers, rows });
+        setStep(2); // Vai para selecionar CNJ
       } catch(err) {
-        alert("Falha ao ler o arquivo: " + err.message);
+        alert("Erro no arquivo: " + err.message);
       }
     };
     reader.readAsBinaryString(file);
   };
 
-  // Mapeamento Handlers
-  const handleMapChange = (header, key, value) => {
-    setMapping(prev => ({
-      ...prev,
-      [header]: {
-        ...prev[header],
-        [key]: value
+  const prepararConciliacao = async () => {
+    if (!masterCol) return;
+    setIsLoadingDB(true);
+    setDiffs([]);
+
+    try {
+      // 1. Dicionário Ativo - descobrir quais colunas vao pra qual tabela
+      const activeMapping = {};
+      fileData.headers.forEach(h => {
+        if (h === masterCol) return;
+        const mapped = autoFindMap(h);
+        if (mapped) activeMapping[h] = mapped;
+      });
+
+      if (Object.keys(activeMapping).length === 0) {
+        throw new Error("Nenhuma coluna (como 'Fases', 'Nome', 'Valor') foi identificada pelo motor para auditoria.");
       }
-    }));
-  };
 
-  const getTargetColumns = (tableName) => {
-    if (!tableName) return [];
-    return SUPABASE_SCHEMA[tableName] || [];
-  };
+      // 2. Extrair CNJs e sanitizar
+      const rowMapsByCNJ = {}; // map { cnjLimpo: rowObject }
+      let cnjsValidos = [];
+      
+      fileData.rows.forEach(r => {
+         let rawCnj = r[masterCol];
+         if(!rawCnj) return;
+         let limpo = String(rawCnj).replace(/\D/g, '');
+         if (limpo.length === 20) {
+             cnjsValidos.push(limpo);
+             rowMapsByCNJ[limpo] = r;
+         }
+      });
+      cnjsValidos = [...new Set(cnjsValidos)]; // uniques
 
-  const getRemanescentes = () => fileData?.headers.filter(h => h !== masterKeyCol) || [];
+      if (cnjsValidos.length === 0) {
+         throw new Error("Sua planilha não possui CNJs válidos de 20 dígitos após limpar pontuações.");
+      }
 
-  const checkMapeamentoValido = () => {
-    if (!masterKeyCol) return false;
-    // Pelo menos 1 coluna deve ter tabela e coluna mapeados
-    return Object.values(mapping).some(m => m.table && m.column);
-  };
-
-  // Motor de Atualização (Etapa Crítica)
-  const executeBulkUpdate = async () => {
-    if (!checkMapeamentoValido()) return;
-    setStep(4);
-    setIsProcessing(true);
-    setProgress(0);
-    setLogs({ success: 0, failed: 0, errors: [] });
-    
-    let okCount = 0;
-    let failCount = 0;
-    const errorArr = [];
-
-    const totalRows = fileData.rows.length;
-
-    for (let i = 0; i < totalRows; i++) {
-        const row = fileData.rows[i];
-        const rawCnj = row[masterKeyCol];
-        
-        // Regra Crítica: Sanitização
-        if (!rawCnj) {
-            failCount++;
-            errorArr.push({ cnj: "N/A", msg: `Linha ${i+2}: Chave CNJ vazia.` });
-            continue;
-        }
-        
-        const cnjSanitizado = String(rawCnj).replace(/\D/g, '');
-        if (cnjSanitizado.length !== 20) {
-            failCount++;
-            errorArr.push({ cnj: rawCnj, msg: "CNJ inválido: deve conter 20 dígitos." });
-            continue;
-        }
-
-        // Agrupar payloads por tabela
-        let tablePayloads = {};
-        
-        Object.keys(mapping).forEach(header => {
-           const setup = mapping[header];
-           if (setup.table && setup.column && row[header]) {
-              if (!tablePayloads[setup.table]) tablePayloads[setup.table] = {};
-              // Transforma booleano se necessário e joga o valor
-              let val = row[header];
-              if (setup.column === 'is_urgente') {
-                 val = String(val).toLowerCase() === 'sim' || String(val) === 'true' || val === '1';
-              }
-              tablePayloads[setup.table][setup.column] = val;
-           }
-        });
-
-        // Executar os Updates via Supabase
-        let hasErrorInRow = false;
-        
-        const tablesToUpdate = Object.keys(tablePayloads);
-        if (tablesToUpdate.length === 0) {
-           failCount++;
-           errorArr.push({ cnj: cnjSanitizado, msg: "Nenhum dado mapeado." });
-           continue;
-        }
-
-        for (const table of tablesToUpdate) {
-            try {
-               const payload = tablePayloads[table];
-               const { data, error } = await supabase
-                  .from(table)
-                  .update(payload)
-                  .eq('numero_cnj', cnjSanitizado)
-                  .select('numero_cnj');
-
-               if (error) throw error;
-               // O update não gera erro fatal se nao achar row, mas retorna array vazio.
-               if (!data || data.length === 0) {
-                  throw new Error(`CNJ não localizado na tabela '${table}'.`);
-               }
-            } catch(dbErr) {
-               hasErrorInRow = true;
-               errorArr.push({ cnj: cnjSanitizado, msg: dbErr.message || String(dbErr) });
+      // 3. Descobrir quais tabelas precisam ser consultadas
+      let tablesToFetch = new Set();
+      Object.values(activeMapping).forEach(m => tablesToFetch.add(m.t));
+      
+      // 4. Buscar em chunks
+      const CHUNK_SIZE = 150;
+      let databaseMemory = { processos: {}, financeiro: {}, audiencias: {} }; // agrupar por tabela -> cnj
+      
+      for(const t of Array.from(tablesToFetch)){
+         for (let i = 0; i < cnjsValidos.length; i += CHUNK_SIZE) {
+            const chunk = cnjsValidos.slice(i, i + CHUNK_SIZE);
+            const { data, error } = await supabase.from(t).select('*').in('numero_cnj', chunk);
+            if (!error && data) {
+               data.forEach(dbRow => { databaseMemory[t][dbRow.numero_cnj] = dbRow; });
             }
-        }
+            setDbFetchProgress(Math.round(((i + chunk.length) / cnjsValidos.length) * 50));
+         }
+      }
 
-        if (hasErrorInRow) {
-            failCount++;
-        } else {
-            okCount++;
-        }
+      // 5. Motor de Diff (Comparação Banco vs Planilha)
+      let foundDiffs = [];
+      let diffId = 0;
 
-        setProgress(Math.round(((i + 1) / totalRows) * 100));
+      cnjsValidos.forEach(cnj => {
+         const planRow = rowMapsByCNJ[cnj];
+         
+         Object.keys(activeMapping).forEach(planHeader => {
+            const config = activeMapping[planHeader]; // {t, c, l}
+            const valPlanilha = planRow[planHeader] || "";
+            
+            // Qual valor está no banco hoje?
+            const bancoRow = databaseMemory[config.t][cnj];
+            const valBanco = bancoRow ? (bancoRow[config.c] || "") : null; // Se bancoRow for null, cnj nem existe lá
+            
+            // Só gerar diff se CNJ EXISTIR naquela tabela e For Diferente
+            if (bancoRow) {
+               let strPlan = String(valPlanilha).trim().toLowerCase();
+               let strBanco = String(valBanco).trim().toLowerCase();
+               // Avoid false positives from pure type comparisons
+               if (strPlan && strBanco !== strPlan && strPlan !== "null" && strPlan !== "undefined" && strPlan !== "") {
+                   foundDiffs.push({
+                      id: diffId++,
+                      cnj: cnj,
+                      table: config.t,
+                      dbCol: config.c,
+                      colName: config.l,
+                      oldVal: valBanco || "—",
+                      newVal: valPlanilha,
+                      checked: true
+                   });
+               }
+            }
+         });
+      });
+
+      setDbFetchProgress(100);
+      
+      setTimeout(() => {
+         setIsLoadingDB(false);
+         setDiffs(foundDiffs);
+         setStep(foundDiffs.length > 0 ? 3 : 5); // 5 Se não teve nada pra atualizar
+      }, 500);
+
+    } catch(e) {
+      alert(e.message);
+      setIsLoadingDB(false);
+      setStep(1);
     }
-
-    setLogs({ success: okCount, failed: failCount, errors: errorArr });
-    setIsProcessing(false);
-    setStep(5); // Concluído
   };
 
-  const copyErrors = () => {
-     const txt = logs.errors.map(e => `CNJ: ${e.cnj} | Erro: ${e.msg}`).join('\n');
-     navigator.clipboard.writeText(txt);
-     alert('Log copiado para área de transferência!');
+  const toggleCheck = (id) => {
+     setDiffs(diffs.map(d => d.id === id ? { ...d, checked: !d.checked } : d));
+  };
+
+  const toggleAll = () => {
+     const allChecked = diffs.every(d => d.checked);
+     setDiffs(diffs.map(d => ({ ...d, checked: !allChecked })));
+  };
+
+  const executarUpdate = async () => {
+     const toUpdate = diffs.filter(d => d.checked);
+     if (toUpdate.length === 0) return;
+     
+     setIsUpdating(true);
+     let updated = 0;
+     let errs = [];
+
+     // Agrupar otimizadamente
+     // Diffs sao independentes. Um CNJ pode ter 2 alterações na Tabela Processos.
+     let masterPayloads = {}; // { processos: { cnjP: {fase: x, risco: y} } }
+     
+     toUpdate.forEach(d => {
+        if(!masterPayloads[d.table]) masterPayloads[d.table] = {};
+        if(!masterPayloads[d.table][d.cnj]) masterPayloads[d.table][d.cnj] = {};
+        masterPayloads[d.table][d.cnj][d.dbCol] = d.newVal;
+     });
+
+     // Push to db
+     for (const table of Object.keys(masterPayloads)) {
+        for (const cnj of Object.keys(masterPayloads[table])) {
+           try {
+              const payload = masterPayloads[table][cnj];
+              const { error } = await supabase.from(table).update(payload).eq('numero_cnj', cnj);
+              if (error) throw error;
+              updated++;
+           } catch(err) {
+              errs.push(`${cnj}: ${err.message}`);
+           }
+        }
+     }
+
+     setIsUpdating(false);
+     setFinalStatus({ updated, errors: errs });
+     setStep(4);
+  };
+
+  const formatCNJ = (cnj) => {
+    if(cnj.length !== 20) return cnj;
+    return `${cnj.slice(0,7)}-${cnj.slice(7,9)}.${cnj.slice(9,13)}.${cnj.slice(13,14)}.${cnj.slice(14,16)}.${cnj.slice(16,20)}`;
   };
 
   return (
-    <div className="max-w-6xl mx-auto w-full px-4 py-8 space-y-6 animate-in fade-in duration-500 text-slate-800 dark:text-zinc-200">
+    <div className="max-w-7xl mx-auto w-full px-4 py-8 animate-in fade-in text-slate-800 dark:text-zinc-200">
       
-      {/* Header */}
-      <div className="flex flex-col mb-8">
-         <h1 className="text-3xl font-newsreader font-medium text-slate-900 dark:text-zinc-100 flex items-center gap-3">
-            <Database className="text-stitch-burgundy dark:text-stitch-secondary" size={32} /> 
-            Importar e Atualizar Processos
-         </h1>
-         <p className="text-slate-500 dark:text-zinc-400 mt-2 font-inter max-w-2xl">
-            Importe planilhas, referencie os cabeçalhos com o banco de dados e faça atualizações de dados em massa garantindo a segurança de todos os processos afetados.
-         </p>
-      </div>
-
-      {/* Stepper Wizard Layer */}
-      <div className="bg-white dark:bg-[#151515] border border-slate-200 dark:border-zinc-800/80 rounded-2xl shadow-sm overflow-hidden">
-        
-        {/* Progress Tracker */}
-        <div className="flex border-b border-slate-100 dark:border-zinc-800/60 bg-slate-50/50 dark:bg-black/20">
-           <div className={`flex-1 p-4 text-xs font-bold font-inter uppercase tracking-widest text-center ${step >= 1 ? 'text-stitch-burgundy dark:text-stitch-secondary' : 'text-slate-400'}`}>1. Importação</div>
-           <div className={`flex-1 p-4 text-xs font-bold font-inter uppercase tracking-widest text-center border-l border-slate-200 dark:border-zinc-800 ${step >= 2 ? 'text-stitch-burgundy dark:text-stitch-secondary' : 'text-slate-400'}`}>2. Mapeamento</div>
-        </div>
-
-        <div className="p-8">
-           {/* STEP 1: UPLOAD */}
-           {step === 1 && (
-             <div className="animate-in slide-in-from-bottom-4 duration-300">
-                <label className="block cursor-pointer group">
-                   <div className="border-2 border-dashed border-slate-300 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-900/30 rounded-2xl p-24 text-center transition-all hover:bg-slate-100 dark:hover:bg-zinc-800/50">
-                      <div className="w-20 h-20 bg-white dark:bg-black/40 shadow-sm border border-slate-200 dark:border-zinc-700 rounded-full flex items-center justify-center mx-auto mb-6 group-hover:scale-110 transition-transform">
-                        <FileSpreadsheet size={36} className="text-slate-400 dark:text-zinc-500 group-hover:text-stitch-burgundy dark:group-hover:text-stitch-secondary" />
-                      </div>
-                      <h3 className="text-xl font-bold font-inter text-slate-800 dark:text-zinc-200 mb-2">Arraste a sua planilha base</h3>
-                      <p className="text-slate-500 dark:text-zinc-500 text-sm">Extensões suportadas: .csv, .xls, .xlsx</p>
-                      <input type="file" className="hidden" accept=".csv, .xls, .xlsx" onChange={handleFileUpload} />
+      {/* STEPS 1 OU 2 (Envio da Planilha) */}
+      {(step === 1 || step === 2) && (
+        <div className="max-w-3xl mx-auto space-y-8 mt-12 animate-in slide-in-from-bottom-4">
+           <div className="text-center mb-8">
+              <h1 className="text-4xl font-newsreader font-bold text-slate-900 dark:text-zinc-100 flex items-center justify-center gap-3">
+                 <FileSpreadsheet className="text-stitch-burgundy dark:text-stitch-secondary" size={36} /> 
+                 Conciliação de Dados
+              </h1>
+              <p className="text-slate-500 dark:text-zinc-400 mt-2">Arraste seu documento Excel ou CSV para uma auditoria visual inteligente antes de atualizar o sistema.</p>
+           </div>
+           
+           {!fileData ? (
+             <label className="block cursor-pointer group">
+                <div className="border border-dashed border-slate-300 dark:border-white/10 bg-slate-50 dark:bg-[#151515] rounded-3xl p-16 text-center transition-all hover:bg-slate-100 dark:hover:bg-zinc-800/80 shadow-sm">
+                   <UploadCloud size={48} className="text-slate-400 mx-auto mb-4 group-hover:text-stitch-burgundy dark:group-hover:text-stitch-secondary transition-colors" />
+                   <h3 className="font-bold font-inter text-slate-800 dark:text-zinc-200 mb-1">Selecionar Planilha</h3>
+                   <p className="text-slate-500 dark:text-zinc-500 text-xs uppercase tracking-widest font-bold">.XLSX, .CSV, .XLS</p>
+                   <input type="file" className="hidden" accept=".csv, .xls, .xlsx" onChange={handleFileUpload} />
+                </div>
+             </label>
+           ) : (
+             <div className="bg-white dark:bg-[#151515] p-8 border border-slate-200 dark:border-white/10 rounded-3xl shadow-sm space-y-8 animate-in fade-in">
+                <div className="flex bg-slate-50 dark:bg-black/30 w-full p-4 rounded-xl border border-dashed border-slate-200 dark:border-white/5 items-center justify-between">
+                   <div className="flex gap-3 items-center">
+                     <FileSpreadsheet size={24} className="text-stitch-burgundy dark:text-stitch-secondary" />
+                     <div>
+                       <p className="font-bold text-sm text-slate-800 dark:text-zinc-200">Arquivo Carregado</p>
+                       <p className="text-xs text-slate-500">{fileData.rows.length} registros detectados</p>
+                     </div>
                    </div>
-                </label>
-             </div>
-           )}
-
-           {/* STEP 2: MAPEAMENTO INTEGRADO */}
-           {step === 2 && fileData && (
-             <div className="animate-in slide-in-from-right-4 duration-300 space-y-10">
-                {/* Pergunta do CNJ no Topo */}
-                <div className="p-8 bg-slate-50 dark:bg-black/30 border border-slate-200 dark:border-white/5 rounded-2xl flex flex-col md:flex-row items-center gap-6 shadow-sm">
-                   <div className="flex-1">
-                      <h2 className="text-xl font-bold font-newsreader mb-2 text-slate-900 dark:text-zinc-100 flex items-center gap-2">
-                         <AlertTriangle size={20} className="text-amber-500" />
-                         Qual coluna da sua planilha contém o Número do Processo (CNJ)?
-                      </h2>
-                      <p className="text-slate-500 dark:text-zinc-400 text-sm">Essa coluna executará a filtragem para atualizar a linha exata no Supabase (.eq('numero_cnj')).</p>
-                   </div>
-                   <div className="w-full md:w-1/3">
-                      <select 
-                        className="w-full p-4 bg-white dark:bg-[#151515] border border-slate-200 dark:border-white/10 rounded-xl text-slate-800 dark:text-zinc-200 focus:outline-none focus:border-stitch-burgundy text-sm font-medium shadow-sm transition-all"
-                        value={masterKeyCol}
-                        onChange={(e) => setMasterKeyCol(e.target.value)}
-                      >
-                        <option value="" disabled>--- Selecione a Coluna ---</option>
-                        {fileData.headers.map(h => <option key={h} value={h}>{h}</option>)}
-                      </select>
-                   </div>
+                   <button onClick={() => { setFileData(null); setMasterCol(''); }} className="text-xs text-slate-500 hover:text-rose-500 font-bold uppercase tracking-widest flex items-center gap-1">Trovar Arquivo</button>
                 </div>
 
-                {/* Aparece só depois que o CNJ for selecionado */}
-                {masterKeyCol && (
-                   <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
-                      <div>
-                         <h3 className="text-xl font-newsreader font-medium mb-1 text-slate-900 dark:text-zinc-100">
-                           Mapear as outras colunas
-                         </h3>
-                         <p className="text-sm text-slate-500 dark:text-zinc-400">Escolha para onde as outras informações devem ir na Base de Dados. Se não quiser transferir algo, deixe como "Ignorar".</p>
-                      </div>
-
-                      <div className="border border-slate-200 dark:border-white/5 rounded-2xl overflow-hidden bg-slate-50 dark:bg-black/20 pb-4">
-                         <div className="grid grid-cols-12 gap-4 p-4 border-b border-slate-200 dark:border-white/5 font-bold uppercase tracking-widest text-[10px] text-slate-500 mr-2">
-                             <div className="col-span-4">Coluna da sua Planilha</div>
-                             <div className="col-span-4 pl-2">Para qual Tabela?</div>
-                             <div className="col-span-4 pl-2">Para qual Coluna no Banco?</div>
-                         </div>
-                         
-                         <div className="max-h-[50vh] overflow-y-auto custom-scrollbar p-3 space-y-3">
-                            {getRemanescentes().map(header => {
-                               const currentMap = mapping[header] || { table: "", column: "" };
-                               const colsAvailable = getTargetColumns(currentMap.table);
-
-                               return (
-                                 <div key={header} className="grid grid-cols-12 gap-4 items-center bg-white dark:bg-[#151515] p-3 rounded-xl border border-slate-100 dark:border-white/5 shadow-sm">
-                                    <div className="col-span-4 pl-2 flex items-center gap-2">
-                                       <span className="font-mono text-xs font-bold text-slate-800 dark:text-zinc-300 truncate" title={header}>{header}</span>
-                                    </div>
-                                    <div className="col-span-4">
-                                       <select 
-                                         className="w-full p-2.5 bg-slate-50 dark:bg-black/50 border border-slate-200 dark:border-white/10 rounded-lg text-xs font-medium text-slate-700 dark:text-zinc-300 focus:outline-none focus:border-stitch-burgundy"
-                                         value={currentMap.table}
-                                         onChange={(e) => handleMapChange(header, "table", e.target.value)}
-                                       >
-                                          <option value="">Ignorar coluna</option>
-                                          <option value="processos">processos</option>
-                                          <option value="financeiro">financeiro</option>
-                                          <option value="audiencias">audiencias</option>
-                                          <option value="farol_documentacao">farol_documentacao</option>
-                                       </select>
-                                    </div>
-                                    <div className="col-span-4">
-                                       <select 
-                                         className="w-full p-2.5 bg-slate-50 dark:bg-black/50 border border-slate-200 dark:border-white/10 rounded-lg text-xs font-medium text-slate-700 dark:text-zinc-300 focus:outline-none focus:border-stitch-burgundy disabled:opacity-30"
-                                         value={currentMap.column}
-                                         onChange={(e) => handleMapChange(header, "column", e.target.value)}
-                                         disabled={!currentMap.table}
-                                       >
-                                          <option value="">Selecione a Coluna...</option>
-                                          {colsAvailable.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-                                       </select>
-                                    </div>
-                                 </div>
-                               );
-                            })}
-                         </div>
-                      </div>
-
-                      <div className="flex justify-between border-t border-slate-200 dark:border-white/5 pt-6 mt-6">
-                         <button onClick={() => {setStep(1); setMasterKeyCol("");}} className="px-6 py-3 font-bold uppercase tracking-widest text-xs text-slate-500 hover:text-slate-800 dark:hover:text-white transition-colors">Cancelar e Voltar</button>
-                         <button 
-                           onClick={executeBulkUpdate} 
-                           disabled={!checkMapeamentoValido()}
-                           className="px-8 py-3 bg-gradient-to-r from-stitch-burgundy to-[#b32035] dark:from-stitch-secondary dark:to-[#eabe5e] text-white dark:text-black font-bold uppercase tracking-widest text-xs rounded-lg flex items-center gap-2 hover:scale-[1.02] shadow-lg shadow-stitch-burgundy/20 disabled:opacity-40 transition-all"
-                         >
-                           <PlayCircle size={18} /> ATUALIZAR PROCESSOS
-                         </button>
-                      </div>
-                   </div>
+                {!isLoadingDB ? (
+                  <>
+                     <div className="space-y-4">
+                        <h2 className="text-2xl font-newsreader font-bold text-slate-900 dark:text-zinc-100">
+                           Qual coluna da sua planilha contém o Número do Processo (CNJ)?
+                        </h2>
+                        <select 
+                           className="w-full p-4 bg-slate-50 dark:bg-black/50 border border-slate-200 dark:border-white/10 rounded-xl text-slate-800 dark:text-zinc-200 focus:outline-none focus:border-stitch-burgundy font-medium text-lg cursor-pointer"
+                           value={masterCol}
+                           onChange={(e) => setMasterCol(e.target.value)}
+                        >
+                           <option value="" disabled>Selecione a Coluna...</option>
+                           {fileData.headers.map(h => <option key={h} value={h}>{h}</option>)}
+                        </select>
+                     </div>
+                     
+                     {masterCol && (
+                        <div className="pt-4 flex justify-end">
+                           <button 
+                              onClick={prepararConciliacao}
+                              className="px-8 py-4 bg-slate-900 dark:bg-white text-white dark:text-black font-bold uppercase tracking-widest text-xs rounded-xl hover:shadow-lg transition-all flex items-center gap-2 group"
+                           >
+                              Comparar com o Banco de Dados <Search size={16} className="group-hover:scale-110 transition-transform" />
+                           </button>
+                        </div>
+                     )}
+                  </>
+                ) : (
+                  <div className="py-12 flex flex-col items-center justify-center space-y-4 animate-in fade-in">
+                     <Loader2 size={36} className="animate-spin text-stitch-burgundy dark:text-stitch-secondary" />
+                     <h2 className="font-bold text-slate-800 dark:text-zinc-200">Auditando {fileData.rows.length} processos...</h2>
+                     <div className="w-64 h-2 bg-slate-100 dark:bg-zinc-800 rounded-full overflow-hidden">
+                        <div className="h-full bg-stitch-burgundy dark:bg-stitch-secondary transition-all" style={{ width: `${dbFetchProgress}%` }}></div>
+                     </div>
+                     <p className="text-xs text-slate-500 font-mono">Buscando dados antigos no Supabase.</p>
+                  </div>
                 )}
              </div>
            )}
-
-           {/* STEP 4: Processing */}
-           {step === 4 && (
-             <div className="animate-in fade-in py-24 flex flex-col items-center justify-center space-y-6">
-                <Loader2 size={48} className="animate-spin text-stitch-burgundy dark:text-stitch-secondary" />
-                <h2 className="text-xl font-newsreader font-bold text-slate-800 dark:text-zinc-100">Autenticando Nodes Triplos...</h2>
-                
-                <div className="w-full max-w-sm space-y-2">
-                   <div className="flex justify-between text-xs font-mono text-slate-500 dark:text-zinc-400">
-                      <span>Progresso da varredura</span>
-                      <span>{progress}%</span>
-                   </div>
-                   <div className="h-2 w-full bg-slate-100 dark:bg-zinc-800 rounded-full overflow-hidden">
-                      <div className="h-full bg-stitch-burgundy dark:bg-stitch-secondary transition-all duration-300" style={{ width: `${progress}%` }}></div>
-                   </div>
-                </div>
-                <p className="text-xs text-slate-400">Sincronizando {fileData?.rows.length} registros com o Supabase Realtime.</p>
-             </div>
-           )}
-
-           {/* STEP 5: Final Report */}
-           {step === 5 && (
-             <div className="animate-in zoom-in duration-500 space-y-8">
-                <div className="text-center mb-6">
-                   <CheckCircle2 size={64} className="mx-auto text-emerald-500 mb-4" />
-                   <h2 className="text-2xl font-newsreader font-bold text-slate-900 dark:text-white mb-2">Resumo da Atualização</h2>
-                   <p className="text-slate-500 dark:text-zinc-400">O processamento da sua planilha foi finalizado.</p>
-                </div>
-
-                <div className="grid grid-cols-3 gap-6 max-w-3xl mx-auto">
-                   <div className="bg-slate-50 dark:bg-black/30 border border-slate-200 dark:border-white/5 rounded-2xl p-6 text-center">
-                     <p className="text-[10px] uppercase font-bold tracking-widest text-slate-500 dark:text-zinc-500 mb-2">Lidos Enfileirados</p>
-                     <p className="text-4xl font-newsreader text-slate-800 dark:text-zinc-100">{fileData.rows.length}</p>
-                   </div>
-                   <div className="bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/30 rounded-2xl p-6 text-center">
-                     <p className="text-[10px] uppercase font-bold tracking-widest text-emerald-600 dark:text-emerald-500 mb-2">Linhas Atualizadas</p>
-                     <p className="text-4xl font-newsreader font-bold text-emerald-600 dark:text-emerald-400">{logs.success}</p>
-                   </div>
-                   <div className="bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/30 rounded-2xl p-6 text-center">
-                     <p className="text-[10px] uppercase font-bold tracking-widest text-rose-600 dark:text-rose-500 mb-2">Falhas</p>
-                     <p className="text-4xl font-newsreader font-bold text-rose-600 dark:text-rose-400">{logs.failed}</p>
-                   </div>
-                </div>
-
-                {logs.errors.length > 0 && (
-                   <div className="max-w-3xl mx-auto border border-rose-200 dark:border-rose-900/50 rounded-2xl overflow-hidden mt-6 bg-white dark:bg-[#151515]">
-                      <div className="bg-rose-50 dark:bg-rose-950/30 px-6 py-4 border-b border-rose-200 dark:border-rose-900/50 flex justify-between items-center">
-                         <h4 className="font-bold text-sm text-rose-800 dark:text-rose-200 flex items-center gap-2"><XCircle size={18} /> Erros</h4>
-                         <button onClick={copyErrors} className="flex items-center gap-2 text-[10px] uppercase tracking-widest font-bold text-rose-600 dark:text-rose-400 hover:text-rose-800 dark:hover:text-red-300">
-                           <Copy size={14} /> Copiar lista de erros
-                         </button>
-                      </div>
-                      <div className="max-h-60 overflow-y-auto custom-scrollbar p-6 space-y-3">
-                         {logs.errors.map((err, i) => (
-                            <div key={i} className="flex flex-col md:flex-row gap-2 md:gap-4 p-3 bg-slate-50 dark:bg-black/30 rounded-xl border border-slate-100 dark:border-white/5 text-sm">
-                               <span className="font-mono font-bold text-slate-800 dark:text-zinc-200 w-48 shrink-0">{err.cnj}</span>
-                               <span className="text-rose-600 dark:text-rose-400 font-medium">Não encontrado no banco de dados</span>
-                            </div>
-                         ))}
-                      </div>
-                   </div>
-                )}
-
-                <div className="text-center pt-8">
-                   <button 
-                     onClick={() => { setStep(1); setFileData(null); setMasterKeyCol(""); setMapping({}); }} 
-                     className="px-8 py-4 bg-slate-900 dark:bg-white text-white dark:text-black font-bold uppercase tracking-widest text-xs rounded-xl hover:shadow-lg transition-all"
-                   >
-                     Fazer Novo Upload
-                   </button>
-                </div>
-             </div>
-           )}
-
         </div>
-      </div>
+      )}
+
+      {/* STEP 3: AUDITORIA VISUAL */}
+      {step === 3 && diffs.length > 0 && (
+         <div className="space-y-6 animate-in slide-in-from-right-4 duration-500">
+            <div className="flex flex-col md:flex-row justify-between md:items-end gap-4 border-b border-slate-200 dark:border-zinc-800 pb-4">
+               <div>
+                  <h1 className="text-3xl font-newsreader font-bold text-slate-900 dark:text-zinc-100">Revisão de Atualizações</h1>
+                  <p className="text-slate-500 dark:text-zinc-400 text-sm mt-1">O sistema encontrou <strong className="text-stitch-burgundy dark:text-stitch-secondary">{diffs.length} diferenças</strong> entre sua planilha e o banco de dados.</p>
+               </div>
+               <div className="flex gap-4">
+                  <button onClick={toggleAll} className="text-xs font-bold uppercase tracking-widest text-slate-500 hover:text-slate-800 dark:hover:text-zinc-300">
+                     Marcar / Desmarcar Todos
+                  </button>
+                  <button 
+                     onClick={executarUpdate} disabled={isUpdating}
+                     className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold uppercase tracking-widest text-xs rounded-lg flex items-center gap-2 shadow-lg shadow-emerald-900/20 disabled:opacity-50 transition-all font-inter"
+                  >
+                     {isUpdating ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />} 
+                     Aprovar e Atualizar ({diffs.filter(d=>d.checked).length})
+                  </button>
+               </div>
+            </div>
+
+            <div className="bg-white dark:bg-[#151515] border border-slate-200 dark:border-white/5 rounded-2xl overflow-hidden shadow-sm">
+               {/* Head */}
+               <div className="grid grid-cols-12 gap-4 p-4 border-b border-slate-100 dark:border-white/5 font-bold text-[10px] uppercase tracking-widest text-slate-500 bg-slate-50 dark:bg-black/20">
+                  <div className="col-span-1 text-center">Aplicar</div>
+                  <div className="col-span-3">Processo Identificado</div>
+                  <div className="col-span-2">Dado Alterado</div>
+                  <div className="col-span-3">Valor Antigo (Banco)</div>
+                  <div className="col-span-3">Novo Valor (Sua Planilha)</div>
+               </div>
+
+               {/* Body Rows */}
+               <div className="max-h-[60vh] overflow-y-auto custom-scrollbar">
+                  {diffs.map(d => (
+                     <div key={d.id} 
+                        className={`grid grid-cols-12 gap-4 border-b border-slate-100 dark:border-white/5 p-4 items-center transition-colors 
+                        ${d.checked ? 'bg-white dark:bg-transparent hover:bg-slate-50 dark:hover:bg-zinc-800/30' : 'bg-slate-50 dark:bg-black/40 opacity-60'}`}
+                     >
+                        <div className="col-span-1 flex justify-center">
+                           <button onClick={() => toggleCheck(d.id)} className="focus:outline-none transition-transform hover:scale-110">
+                              {d.checked ? <CheckSquare size={20} className="text-emerald-500" /> : <Square size={20} className="text-slate-300 dark:text-zinc-600" />}
+                           </button>
+                        </div>
+                        <div className="col-span-3 truncate">
+                           <p className="font-mono text-sm font-bold text-slate-800 dark:text-zinc-200">{formatCNJ(d.cnj)}</p>
+                        </div>
+                        <div className="col-span-2">
+                           <span className="text-xs font-bold uppercase tracking-widest bg-black/5 dark:bg-white/10 px-2 py-1 rounded text-slate-600 dark:text-zinc-400">{d.colName}</span>
+                        </div>
+                        <div className="col-span-3 flex items-center pr-2 border-r border-slate-100 dark:border-zinc-800">
+                           <p className="text-sm line-clamp-2 text-rose-700/80 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/20 px-2 py-1 rounded w-full border border-rose-100 dark:border-rose-900/30 font-medium">
+                              {d.oldVal}
+                           </p>
+                        </div>
+                        <div className="col-span-3 gap-2 flex items-center pl-2">
+                           <ArrowRight size={14} className="text-emerald-300 shrink-0 hidden md:block" />
+                           <p className="text-sm line-clamp-2 text-emerald-800 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/30 px-2 py-1 rounded w-full border border-emerald-100 dark:border-emerald-900/30 font-medium">
+                              {d.newVal}
+                           </p>
+                        </div>
+                     </div>
+                  ))}
+               </div>
+            </div>
+         </div>
+      )}
+
+      {/* STEP 4: RESULTADO FINAL */}
+      {step === 4 && finalStatus && (
+         <div className="max-w-2xl mx-auto py-16 text-center space-y-6 animate-in zoom-in duration-500">
+            <CheckCircle2 size={80} className="mx-auto text-emerald-500" />
+            <h1 className="text-3xl font-newsreader font-bold text-slate-900 dark:text-white">Atualização Concluída</h1>
+            <p className="text-slate-500 dark:text-zinc-400">
+               Nós atualizamos <strong className="text-slate-800 dark:text-zinc-200 text-lg">{finalStatus.updated} {finalStatus.updated === 1 ? 'instância' : 'instâncias'}</strong> no sistema de forma segura. O Farol foi sincronizado automaticamente com os novos dados.
+            </p>
+            
+            {finalStatus.errors.length > 0 && (
+               <div className="bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/40 rounded-xl p-4 text-left max-h-48 overflow-auto mt-6">
+                  <p className="text-xs font-bold text-rose-700 dark:text-rose-400 uppercase mb-2">As seguintes linhas não foram salvas por erro na rede:</p>
+                  <ul className="text-xs font-mono text-rose-600/80 dark:text-rose-300/80 space-y-1">
+                     {finalStatus.errors.map((e,i) => <li key={i}>{e}</li>)}
+                  </ul>
+               </div>
+            )}
+
+            <div className="pt-8 flex justify-center gap-4">
+               <button onClick={() => { setStep(1); setFileData(null); setMasterCol(''); }} className="px-6 py-3 border border-slate-200 dark:border-zinc-700 text-slate-600 dark:text-zinc-300 font-bold uppercase tracking-widest text-xs rounded-xl hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors">Voltar</button>
+               <a href="/farol" className="px-8 py-3 bg-slate-900 dark:bg-white text-white dark:text-black font-bold uppercase tracking-widest text-xs rounded-xl hover:shadow-lg transition-all">Ver no Farol</a>
+            </div>
+         </div>
+      )}
+
+      {/* STEP 5: Nada a atualizar */}
+      {step === 5 && (
+         <div className="max-w-2xl mx-auto py-16 text-center space-y-6 animate-in zoom-in duration-500">
+            <Info size={80} className="mx-auto text-slate-300 dark:text-zinc-600" />
+            <h1 className="text-3xl font-newsreader font-bold text-slate-900 dark:text-white">Sem Mudanças</h1>
+            <p className="text-slate-500 dark:text-zinc-400 text-lg">
+               Sua planilha não possui nenhuma informação diferente do que já está armazenado no sistema hoje, ou os cabeçalhos não deram match. 
+            </p>
+            <div className="pt-8">
+               <button onClick={() => { setStep(1); setFileData(null); setMasterCol(''); }} className="px-8 py-4 bg-slate-900 dark:bg-white text-white dark:text-black font-bold uppercase tracking-widest text-xs rounded-xl hover:shadow-lg transition-all">Carregar Outra Planilha</button>
+            </div>
+         </div>
+      )}
+
     </div>
   );
 }
