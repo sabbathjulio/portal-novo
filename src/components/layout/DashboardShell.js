@@ -8,7 +8,7 @@ export default function DashboardShell({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-stitch-bg transition-colors">
+    <div className="flex h-screen overflow-hidden bg-stitch-bg dark:bg-zinc-950 transition-colors duration-300">
       
       {/* Sidebar - Fixa à esquerda na versão desktop. Toggleable. */}
       {/* Container visível ou invisível dependendo do estado */}
@@ -17,7 +17,7 @@ export default function DashboardShell({ children }) {
           sidebarOpen ? 'translate-x-0' : '-translate-x-full md:w-0'
         }`}
       >
-         <div className={`h-full ${sidebarOpen ? 'w-64' : 'w-0'} overflow-hidden transition-all duration-300 border-r border-slate-200`}>
+         <div className={`h-full ${sidebarOpen ? 'w-64' : 'w-0'} overflow-hidden transition-all duration-300 border-r border-slate-200 dark:border-zinc-800`}>
            <Sidebar isSidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} />
          </div>
       </div>

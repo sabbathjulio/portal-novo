@@ -4,15 +4,27 @@
   --font-newsreader: var(--font-newsreader);
   --font-inter: var(--font-inter);
   
+  /* Códex Light */
   --color-stitch-bg: #fbf9f3;
   --color-stitch-sidebar: #eae8e2;
+  
+  /* Paleta Stitch / Imperial Extensão */
   --color-stitch-white: #ffffff;
   --color-stitch-burgundy: #800020;
   --color-stitch-burgundy-dark: #570013;
+  --color-stitch-secondary: #ae6165;
+  --color-stitch-tertiary: #004451;
+  --color-stitch-neutral: #f2f0ea;
 }
+
+@custom-variant dark (&:is(.dark *));
 
 :root {
   --background: #fbf9f3;
+}
+
+.dark {
+  --background: #18181b;
 }
 
 body {

@@ -20,24 +20,24 @@ import { supabase } from '@/lib/supabase';
 // Micro-Card Utilitário
 const KPICard = ({ title, value, subtitle, icon: Icon, trend, href }) => {
   const content = (
-    <div className="bg-stitch-white border border-slate-200 rounded-md p-5 flex flex-col justify-between shadow-sm hover:shadow-md hover:border-slate-300 transition-all group h-full">
+    <div className="bg-stitch-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800/80 rounded-md p-5 flex flex-col justify-between shadow-sm hover:shadow-md hover:border-slate-300 dark:hover:border-zinc-700 transition-all group h-full">
       <div className="flex justify-between items-start mb-4">
-        <div className="p-2 bg-stitch-bg rounded border border-slate-100 group-hover:bg-rose-50 transition-colors">
-          <Icon className="w-5 h-5 text-slate-500 group-hover:text-stitch-burgundy transition-colors" />
+        <div className="p-2 bg-stitch-bg dark:bg-zinc-950 rounded border border-slate-100 dark:border-zinc-800/60 group-hover:bg-rose-50 dark:group-hover:bg-zinc-800 transition-colors">
+          <Icon className="w-5 h-5 text-slate-500 dark:text-zinc-500 group-hover:text-stitch-burgundy dark:group-hover:text-stitch-secondary transition-colors" />
         </div>
         {trend && (
-          <span className="flex items-center text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded uppercase tracking-wider">
+          <span className="flex items-center text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 px-1.5 py-0.5 rounded uppercase tracking-wider">
             {trend} <ArrowUpRight className="w-3 h-3 ml-1" />
           </span>
         )}
       </div>
       
       <div>
-        <h3 className="font-newsreader text-3xl font-bold text-slate-900 tracking-tight">{value}</h3>
-        <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest mt-1">
+        <h3 className="font-newsreader text-3xl font-bold text-slate-900 dark:text-zinc-100 tracking-tight">{value}</h3>
+        <p className="text-[11px] font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest mt-1">
           {title}
         </p>
-        {subtitle && <p className="text-[10px] text-slate-400 mt-1">{subtitle}</p>}
+        {subtitle && <p className="text-[10px] text-slate-400 dark:text-zinc-600 mt-1">{subtitle}</p>}
       </div>
     </div>
   );
@@ -49,9 +49,9 @@ const KPICard = ({ title, value, subtitle, icon: Icon, trend, href }) => {
 const DocumentRow = ({ doc, empresa, reclamante, status, dueDate }) => {
   const getStatusStyle = (s) => {
     switch (s) {
-      case 'Pendência Crítica': return 'bg-rose-100/50 text-stitch-burgundy border-rose-200';
-      case 'Revisão Necessária': return 'bg-amber-100/50 text-amber-800 border-amber-200';
-      default: return 'bg-slate-100 text-slate-600 border-slate-200';
+      case 'Pendência Crítica': return 'bg-rose-100/50 text-stitch-burgundy dark:bg-rose-900/20 dark:text-stitch-secondary border-rose-200 dark:border-rose-900/30';
+      case 'Revisão Necessária': return 'bg-amber-100/50 text-amber-800 dark:bg-amber-900/20 dark:text-amber-500 border-amber-200 dark:border-amber-900/30';
+      default: return 'bg-slate-100 text-slate-600 dark:bg-zinc-800 dark:text-zinc-400 border-slate-200 dark:border-zinc-700';
     }
   };
 
@@ -64,18 +64,18 @@ const DocumentRow = ({ doc, empresa, reclamante, status, dueDate }) => {
   };
 
   return (
-    <tr className="border-b border-slate-100 hover:bg-slate-50/50 transition-colors">
+    <tr className="border-b border-slate-100 dark:border-zinc-800/60 hover:bg-slate-50/50 dark:hover:bg-zinc-800/30 transition-colors">
       <td className="py-4 px-5">
-        <p className="text-sm font-semibold text-slate-800">{doc}</p>
-        <p className="text-[10px] uppercase tracking-widest text-slate-500 font-bold mt-0.5">{reclamante}</p>
+        <p className="text-sm font-semibold text-slate-800 dark:text-zinc-200">{doc}</p>
+        <p className="text-[10px] uppercase tracking-widest text-slate-500 dark:text-zinc-500 font-bold mt-0.5">{reclamante}</p>
       </td>
-      <td className="py-4 px-5 text-xs text-slate-600">{empresa}</td>
+      <td className="py-4 px-5 text-xs text-slate-600 dark:text-zinc-400">{empresa}</td>
       <td className="py-4 px-5">
         <span className={`inline-flex items-center px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider border ${getStatusStyle(status)}`}>
           {getStatusIcon(status)} {status}
         </span>
       </td>
-      <td className="py-4 px-5 text-xs font-mono text-slate-500 text-right">
+      <td className="py-4 px-5 text-xs font-mono text-slate-500 dark:text-zinc-500 text-right">
         {dueDate}
       </td>
     </tr>
@@ -110,15 +110,15 @@ export default function DashboardHome() {
   ];
 
   if (isLoading) {
-    return <div className="h-64 flex items-center justify-center text-sm font-bold uppercase tracking-widest text-slate-400 animate-pulse">Sincronizando Matriz...</div>;
+    return <div className="h-64 flex items-center justify-center text-sm font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-600 animate-pulse">Sincronizando Matriz...</div>;
   }
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="font-newsreader text-4xl font-bold tracking-tight text-slate-900">Visão Geral Operacional</h1>
-          <p className="text-xs text-slate-500 mt-1 uppercase tracking-widest font-bold">Resumo Estratégico Bernardes Corp</p>
+          <h1 className="font-newsreader text-4xl font-bold tracking-tight text-slate-900 dark:text-zinc-100 transition-colors">Visão Geral Operacional</h1>
+          <p className="text-xs text-slate-500 dark:text-zinc-500 mt-1 uppercase tracking-widest font-bold">Resumo Estratégico Bernardes Corp</p>
         </div>
       </div>
 
@@ -131,25 +131,25 @@ export default function DashboardHome() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-            <h2 className="text-sm font-bold uppercase tracking-widest text-slate-800 flex items-center gap-2">
-              <FileWarning className="w-4 h-4 text-stitch-burgundy" />
+          <div className="flex items-center justify-between border-b border-slate-200 dark:border-zinc-800 pb-2">
+            <h2 className="text-sm font-bold uppercase tracking-widest text-slate-800 dark:text-zinc-200 flex items-center gap-2">
+              <FileWarning className="w-4 h-4 text-stitch-burgundy dark:text-stitch-secondary" />
               Farol de Documentos
             </h2>
             <div className="flex gap-2">
-              <button className="p-1.5 text-slate-400 hover:text-slate-600 border border-slate-200 rounded bg-stitch-white transition-colors">
+              <button className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-zinc-300 border border-slate-200 dark:border-zinc-800 rounded bg-stitch-white dark:bg-zinc-900 transition-colors">
                 <Search className="w-3.5 h-3.5" />
               </button>
-              <button className="p-1.5 text-slate-400 hover:text-slate-600 border border-slate-200 rounded bg-stitch-white transition-colors">
+              <button className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-zinc-300 border border-slate-200 dark:border-zinc-800 rounded bg-stitch-white dark:bg-zinc-900 transition-colors">
                 <Filter className="w-3.5 h-3.5" />
               </button>
             </div>
           </div>
           
-          <div className="bg-stitch-white rounded-md border border-slate-200 overflow-hidden shadow-sm">
+          <div className="bg-stitch-white dark:bg-zinc-900 rounded-md border border-slate-200 dark:border-zinc-800 overflow-hidden shadow-sm transition-colors">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="bg-stitch-sidebar border-b border-slate-200 text-[10px] font-bold text-slate-600 uppercase tracking-wider">
+                <tr className="bg-stitch-sidebar dark:bg-[#151517] border-b border-slate-200 dark:border-zinc-800 text-[10px] font-bold text-slate-600 dark:text-zinc-400 uppercase tracking-wider">
                   <th className="py-3 px-5 w-5/12 font-bold tracking-widest">Evidência Faltante / Reclamante</th>
                   <th className="py-3 px-5 w-3/12 font-bold tracking-widest">Localidade</th>
                   <th className="py-3 px-5 w-3/12 font-bold tracking-widest">Status de Risco</th>
@@ -164,28 +164,28 @@ export default function DashboardHome() {
         </div>
 
         <div className="space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-            <h2 className="text-sm font-bold uppercase tracking-widest text-slate-800">Alertas do Sistema</h2>
+          <div className="flex items-center justify-between border-b border-slate-200 dark:border-zinc-800 pb-2">
+            <h2 className="text-sm font-bold uppercase tracking-widest text-slate-800 dark:text-zinc-200">Alertas do Sistema</h2>
           </div>
-          <div className="bg-stitch-white rounded-md border border-slate-200 p-5 shadow-sm space-y-4">
+          <div className="bg-stitch-white dark:bg-zinc-900 rounded-md border border-slate-200 dark:border-zinc-800 p-5 shadow-sm space-y-4 transition-colors">
             <div className="flex gap-3">
-               <div className="mt-0.5 w-2 h-2 rounded-full bg-rose-600 animate-pulse shrink-0" />
+               <div className="mt-0.5 w-2 h-2 rounded-full bg-rose-600 dark:bg-rose-500 animate-pulse shrink-0" />
                <div>
-                  <p className="text-xs font-bold text-slate-800 uppercase tracking-wide">Sincronização PJe (TRT-2)</p>
-                  <p className="text-[11px] text-slate-500 mt-1">Instabilidade detectada na extração de pautas do TRT-2. O Radar reagendará a varredura em 15 minutos.</p>
+                  <p className="text-xs font-bold text-slate-800 dark:text-zinc-200 uppercase tracking-wide">Sincronização PJe (TRT-2)</p>
+                  <p className="text-[11px] text-slate-500 dark:text-zinc-400 mt-1">Instabilidade detectada na extração de pautas do TRT-2. O Radar reagendará a varredura em 15 minutos.</p>
                </div>
             </div>
-            <div className="h-px bg-slate-100" />
+            <div className="h-px bg-slate-100 dark:bg-zinc-800" />
             <div className="flex gap-3">
-               <div className="mt-0.5 w-2 h-2 rounded-full bg-amber-500 shrink-0" />
+               <div className="mt-0.5 w-2 h-2 rounded-full bg-amber-500 dark:bg-amber-400 shrink-0" />
                <div>
-                  <p className="text-xs font-bold text-slate-800 uppercase tracking-wide">Backup de Dossiês</p>
-                  <p className="text-[11px] text-slate-500 mt-1">A compressão dos PDFs de processos encerrados este mês concluiu com retenção no Cold Storage.</p>
+                  <p className="text-xs font-bold text-slate-800 dark:text-zinc-200 uppercase tracking-wide">Backup de Dossiês</p>
+                  <p className="text-[11px] text-slate-500 dark:text-zinc-400 mt-1">A compressão dos PDFs de processos encerrados este mês concluiu com retenção no Cold Storage.</p>
                </div>
             </div>
             
-            <div className="pt-2 mt-4 border-t border-slate-100">
-               <Link href="/admin/sincronizador" className="w-full py-2.5 flex items-center justify-center gap-2 rounded text-[10px] font-bold text-slate-500 uppercase tracking-widest hover:text-stitch-burgundy hover:bg-slate-50 transition-all border border-transparent hover:border-slate-200">
+            <div className="pt-2 mt-4 border-t border-slate-100 dark:border-zinc-800">
+               <Link href="/admin/sincronizador" className="w-full py-2.5 flex items-center justify-center gap-2 rounded text-[10px] font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest hover:text-stitch-burgundy dark:hover:text-stitch-secondary hover:bg-slate-50 dark:hover:bg-zinc-800/50 transition-all border border-transparent hover:border-slate-200 dark:hover:border-zinc-700">
                   <Database size={12} /> Verificar Sincronia
                </Link>
             </div>
