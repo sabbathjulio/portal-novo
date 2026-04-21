@@ -150,9 +150,9 @@ export default function AtualizacaoUniversalPage() {
         }
         
         const cnjSanitizado = String(rawCnj).replace(/\D/g, '');
-        if (cnjSanitizado.length < 10) {
+        if (cnjSanitizado.length !== 20) {
             failCount++;
-            errorArr.push({ cnj: rawCnj, msg: "CNJ inválido após sanitização." });
+            errorArr.push({ cnj: rawCnj, msg: "CNJ inválido: deve conter 20 dígitos." });
             continue;
         }
 
@@ -229,10 +229,10 @@ export default function AtualizacaoUniversalPage() {
       <div className="flex flex-col mb-8">
          <h1 className="text-3xl font-newsreader font-medium text-slate-900 dark:text-zinc-100 flex items-center gap-3">
             <Database className="text-stitch-burgundy dark:text-stitch-secondary" size={32} /> 
-            Atualizador Universal
+            Importar e Atualizar Processos
          </h1>
          <p className="text-slate-500 dark:text-zinc-400 mt-2 font-inter max-w-2xl">
-            Motor de injeção direta (ETL). Especifique as diretrizes de coluna para disparar comandos de roteamento em multi-tabela para o servidor relacional em tempo real.
+            Importe planilhas, referencie os cabeçalhos com o banco de dados e faça atualizações de dados em massa garantindo a segurança de todos os processos afetados.
          </p>
       </div>
 
@@ -242,9 +242,7 @@ export default function AtualizacaoUniversalPage() {
         {/* Progress Tracker */}
         <div className="flex border-b border-slate-100 dark:border-zinc-800/60 bg-slate-50/50 dark:bg-black/20">
            <div className={`flex-1 p-4 text-xs font-bold font-inter uppercase tracking-widest text-center ${step >= 1 ? 'text-stitch-burgundy dark:text-stitch-secondary' : 'text-slate-400'}`}>1. Importação</div>
-           <div className={`flex-1 p-4 text-xs font-bold font-inter uppercase tracking-widest text-center border-l border-slate-200 dark:border-zinc-800 ${step >= 2 ? 'text-stitch-burgundy dark:text-stitch-secondary' : 'text-slate-400'}`}>2. Chave Mestra</div>
-           <div className={`flex-1 p-4 text-xs font-bold font-inter uppercase tracking-widest text-center border-l border-slate-200 dark:border-zinc-800 ${step >= 3 ? 'text-stitch-burgundy dark:text-stitch-secondary' : 'text-slate-400'}`}>3. Mapeamento</div>
-           <div className={`flex-1 p-4 text-xs font-bold font-inter uppercase tracking-widest text-center border-l border-slate-200 dark:border-zinc-800 ${step >= 4 ? 'text-stitch-burgundy dark:text-stitch-secondary' : 'text-slate-400'}`}>4. Tráfego</div>
+           <div className={`flex-1 p-4 text-xs font-bold font-inter uppercase tracking-widest text-center border-l border-slate-200 dark:border-zinc-800 ${step >= 2 ? 'text-stitch-burgundy dark:text-stitch-secondary' : 'text-slate-400'}`}>2. Mapeamento</div>
         </div>
 
         <div className="p-8">
@@ -264,107 +262,99 @@ export default function AtualizacaoUniversalPage() {
              </div>
            )}
 
-           {/* STEP 2: CHAVE MESTRA */}
+           {/* STEP 2: MAPEAMENTO INTEGRADO */}
            {step === 2 && fileData && (
-             <div className="animate-in slide-in-from-right-4 duration-300 max-w-2xl mx-auto space-y-8">
-                <div className="text-center">
-                   <Settings2 size={48} className="mx-auto text-stitch-burgundy dark:text-stitch-secondary mb-4" />
-                   <h2 className="text-2xl font-newsreader font-medium mb-2 text-slate-900 dark:text-zinc-100">Selecionar Index da Base</h2>
-                   <p className="text-slate-500 dark:text-zinc-400">Qual coluna da sua planilha representa o protocolo universal (CNJ)?</p>
-                </div>
-                
-                <div className="p-6 bg-slate-50 dark:bg-black/30 border border-slate-200 dark:border-white/5 rounded-2xl flex flex-col items-center">
-                   <select 
-                     className="w-full max-w-md p-4 bg-white dark:bg-[#151515] border border-slate-200 dark:border-white/10 rounded-xl text-slate-800 dark:text-zinc-200 focus:outline-none focus:border-stitch-burgundy text-sm font-medium"
-                     value={masterKeyCol}
-                     onChange={(e) => setMasterKeyCol(e.target.value)}
-                   >
-                     <option value="" disabled>--- Selecione a Coluna ---</option>
-                     {fileData.headers.map(h => <option key={h} value={h}>{h}</option>)}
-                   </select>
-
-                   <div className="mt-8 flex gap-2 items-center text-xs text-slate-500 bg-black/5 dark:bg-black p-4 rounded-xl border border-dashed border-slate-300 dark:border-white/10 w-full max-w-md">
-                     <AlertTriangle size={16} className="text-amber-500 shrink-0" />
-                     <p>A engine aplicará sanitização automática <code className="bg-black/10 dark:bg-white/10 px-1 rounded">replace(/\D/g, '')</code> na informação dessa coluna antes de cruzar com as APIs.</p>
+             <div className="animate-in slide-in-from-right-4 duration-300 space-y-10">
+                {/* Pergunta do CNJ no Topo */}
+                <div className="p-8 bg-slate-50 dark:bg-black/30 border border-slate-200 dark:border-white/5 rounded-2xl flex flex-col md:flex-row items-center gap-6 shadow-sm">
+                   <div className="flex-1">
+                      <h2 className="text-xl font-bold font-newsreader mb-2 text-slate-900 dark:text-zinc-100 flex items-center gap-2">
+                         <AlertTriangle size={20} className="text-amber-500" />
+                         Qual coluna da sua planilha contém o Número do Processo (CNJ)?
+                      </h2>
+                      <p className="text-slate-500 dark:text-zinc-400 text-sm">Essa coluna executará a filtragem para atualizar a linha exata no Supabase (.eq('numero_cnj')).</p>
+                   </div>
+                   <div className="w-full md:w-1/3">
+                      <select 
+                        className="w-full p-4 bg-white dark:bg-[#151515] border border-slate-200 dark:border-white/10 rounded-xl text-slate-800 dark:text-zinc-200 focus:outline-none focus:border-stitch-burgundy text-sm font-medium shadow-sm transition-all"
+                        value={masterKeyCol}
+                        onChange={(e) => setMasterKeyCol(e.target.value)}
+                      >
+                        <option value="" disabled>--- Selecione a Coluna ---</option>
+                        {fileData.headers.map(h => <option key={h} value={h}>{h}</option>)}
+                      </select>
                    </div>
                 </div>
 
-                <div className="flex justify-between border-t border-slate-200 dark:border-white/5 pt-6 mt-8">
-                   <button onClick={() => setStep(1)} className="px-6 py-3 font-bold uppercase tracking-widest text-xs text-slate-500 hover:text-slate-800 dark:hover:text-white transition-colors">Voltar</button>
-                   <button onClick={() => setStep(3)} disabled={!masterKeyCol} className="px-8 py-3 bg-slate-900 dark:bg-white text-white dark:text-black font-bold uppercase tracking-widest text-xs rounded-lg hover:shadow-lg transition-all disabled:opacity-50">Avançar Mapeamento</button>
-                </div>
-             </div>
-           )}
+                {/* Aparece só depois que o CNJ for selecionado */}
+                {masterKeyCol && (
+                   <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
+                      <div>
+                         <h3 className="text-xl font-newsreader font-medium mb-1 text-slate-900 dark:text-zinc-100">
+                           Mapear as outras colunas
+                         </h3>
+                         <p className="text-sm text-slate-500 dark:text-zinc-400">Escolha para onde as outras informações devem ir na Base de Dados. Se não quiser transferir algo, deixe como "Ignorar".</p>
+                      </div>
 
-           {/* STEP 3: Mapeamento DE-PARA */}
-           {step === 3 && fileData && (
-             <div className="animate-in slide-in-from-right-4 duration-300 space-y-6">
-                <div>
-                   <h2 className="text-2xl font-newsreader font-medium mb-1 text-slate-900 dark:text-zinc-100 flex items-center gap-3">
-                     Configurar De-Para
-                     <span className="bg-slate-100 dark:bg-zinc-800 text-xs px-2 py-1 rounded font-mono font-bold text-slate-700 dark:text-zinc-400 border border-slate-200 dark:border-zinc-700">Chave base: {masterKeyCol}</span>
-                   </h2>
-                   <p className="text-sm text-slate-500 dark:text-zinc-400">Arquitete as vias de injeção. Ignore as colunas que não desejar importar.</p>
-                </div>
+                      <div className="border border-slate-200 dark:border-white/5 rounded-2xl overflow-hidden bg-slate-50 dark:bg-black/20 pb-4">
+                         <div className="grid grid-cols-12 gap-4 p-4 border-b border-slate-200 dark:border-white/5 font-bold uppercase tracking-widest text-[10px] text-slate-500 mr-2">
+                             <div className="col-span-4">Coluna da sua Planilha</div>
+                             <div className="col-span-4 pl-2">Para qual Tabela?</div>
+                             <div className="col-span-4 pl-2">Para qual Coluna no Banco?</div>
+                         </div>
+                         
+                         <div className="max-h-[50vh] overflow-y-auto custom-scrollbar p-3 space-y-3">
+                            {getRemanescentes().map(header => {
+                               const currentMap = mapping[header] || { table: "", column: "" };
+                               const colsAvailable = getTargetColumns(currentMap.table);
 
-                <div className="border border-slate-200 dark:border-white/5 rounded-2xl overflow-hidden bg-slate-50 dark:bg-black/20">
-                   <div className="grid grid-cols-12 gap-4 p-4 border-b border-slate-200 dark:border-white/5 font-bold uppercase tracking-widest text-[10px] text-slate-500 mr-2">
-                       <div className="col-span-4">Coluna Matriz (Sua Planilha)</div>
-                       <div className="col-span-4 pl-2">1. Cluster Destino (Tabela)</div>
-                       <div className="col-span-4 pl-2">2. End-Node (Coluna)</div>
+                               return (
+                                 <div key={header} className="grid grid-cols-12 gap-4 items-center bg-white dark:bg-[#151515] p-3 rounded-xl border border-slate-100 dark:border-white/5 shadow-sm">
+                                    <div className="col-span-4 pl-2 flex items-center gap-2">
+                                       <span className="font-mono text-xs font-bold text-slate-800 dark:text-zinc-300 truncate" title={header}>{header}</span>
+                                    </div>
+                                    <div className="col-span-4">
+                                       <select 
+                                         className="w-full p-2.5 bg-slate-50 dark:bg-black/50 border border-slate-200 dark:border-white/10 rounded-lg text-xs font-medium text-slate-700 dark:text-zinc-300 focus:outline-none focus:border-stitch-burgundy"
+                                         value={currentMap.table}
+                                         onChange={(e) => handleMapChange(header, "table", e.target.value)}
+                                       >
+                                          <option value="">Ignorar coluna</option>
+                                          <option value="processos">processos</option>
+                                          <option value="financeiro">financeiro</option>
+                                          <option value="audiencias">audiencias</option>
+                                          <option value="farol_documentacao">farol_documentacao</option>
+                                       </select>
+                                    </div>
+                                    <div className="col-span-4">
+                                       <select 
+                                         className="w-full p-2.5 bg-slate-50 dark:bg-black/50 border border-slate-200 dark:border-white/10 rounded-lg text-xs font-medium text-slate-700 dark:text-zinc-300 focus:outline-none focus:border-stitch-burgundy disabled:opacity-30"
+                                         value={currentMap.column}
+                                         onChange={(e) => handleMapChange(header, "column", e.target.value)}
+                                         disabled={!currentMap.table}
+                                       >
+                                          <option value="">Selecione a Coluna...</option>
+                                          {colsAvailable.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                                       </select>
+                                    </div>
+                                 </div>
+                               );
+                            })}
+                         </div>
+                      </div>
+
+                      <div className="flex justify-between border-t border-slate-200 dark:border-white/5 pt-6 mt-6">
+                         <button onClick={() => {setStep(1); setMasterKeyCol("");}} className="px-6 py-3 font-bold uppercase tracking-widest text-xs text-slate-500 hover:text-slate-800 dark:hover:text-white transition-colors">Cancelar e Voltar</button>
+                         <button 
+                           onClick={executeBulkUpdate} 
+                           disabled={!checkMapeamentoValido()}
+                           className="px-8 py-3 bg-gradient-to-r from-stitch-burgundy to-[#b32035] dark:from-stitch-secondary dark:to-[#eabe5e] text-white dark:text-black font-bold uppercase tracking-widest text-xs rounded-lg flex items-center gap-2 hover:scale-[1.02] shadow-lg shadow-stitch-burgundy/20 disabled:opacity-40 transition-all"
+                         >
+                           <PlayCircle size={18} /> ATUALIZAR PROCESSOS
+                         </button>
+                      </div>
                    </div>
-                   
-                   <div className="max-h-[50vh] overflow-y-auto custom-scrollbar p-2 space-y-2">
-                      {getRemanescentes().map(header => {
-                         const currentMap = mapping[header] || { table: "", column: "" };
-                         const colsAvailable = getTargetColumns(currentMap.table);
-
-                         return (
-                           <div key={header} className="grid grid-cols-12 gap-4 items-center bg-white dark:bg-[#151515] p-3 rounded-xl border border-slate-100 dark:border-white/5 shadow-sm">
-                              <div className="col-span-4 pl-2 flex items-center gap-2">
-                                 <div className="w-1.5 h-1.5 rounded-full bg-slate-300 dark:bg-zinc-700"></div>
-                                 <span className="font-mono text-xs font-bold text-slate-800 dark:text-zinc-300 truncate" title={header}>{header}</span>
-                              </div>
-                              <div className="col-span-4">
-                                 <select 
-                                   className="w-full p-2 bg-slate-50 dark:bg-black/50 border border-slate-200 dark:border-white/10 rounded-lg text-xs font-medium text-slate-700 dark:text-zinc-300 focus:outline-none focus:border-stitch-burgundy"
-                                   value={currentMap.table}
-                                   onChange={(e) => handleMapChange(header, "table", e.target.value)}
-                                 >
-                                    <option value="">-- Ignorar --</option>
-                                    <option value="processos">Tabela ._processos</option>
-                                    <option value="financeiro">Tabela ._financeiro</option>
-                                    <option value="audiencias">Tabela ._audiencias</option>
-                                    <option value="farol_documentacao">Tabela ._farol</option>
-                                 </select>
-                              </div>
-                              <div className="col-span-4">
-                                 <select 
-                                   className="w-full p-2 bg-slate-50 dark:bg-black/50 border border-slate-200 dark:border-white/10 rounded-lg text-xs font-medium text-slate-700 dark:text-zinc-300 focus:outline-none focus:border-stitch-burgundy disabled:opacity-30"
-                                   value={currentMap.column}
-                                   onChange={(e) => handleMapChange(header, "column", e.target.value)}
-                                   disabled={!currentMap.table}
-                                 >
-                                    <option value="">Selecione Coluna...</option>
-                                    {colsAvailable.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-                                 </select>
-                              </div>
-                           </div>
-                         );
-                      })}
-                   </div>
-                </div>
-
-                <div className="flex justify-between border-t border-slate-200 dark:border-white/5 pt-6 mt-6">
-                   <button onClick={() => setStep(2)} className="px-6 py-3 font-bold uppercase tracking-widest text-xs text-slate-500 hover:text-slate-800 dark:hover:text-white transition-colors">Voltar</button>
-                   <button 
-                     onClick={executeBulkUpdate} 
-                     disabled={!checkMapeamentoValido()}
-                     className="px-8 py-3 bg-gradient-to-r from-stitch-burgundy to-[#b32035] dark:from-stitch-secondary dark:to-[#eabe5e] text-white dark:text-black font-bold uppercase tracking-widest text-xs rounded-lg flex items-center gap-2 hover:scale-[1.02] shadow-lg shadow-stitch-burgundy/20 disabled:opacity-40 transition-all"
-                   >
-                     <PlayCircle size={18} /> INICIAR INJEÇÃO DE DADOS
-                   </button>
-                </div>
+                )}
              </div>
            )}
 
@@ -390,10 +380,10 @@ export default function AtualizacaoUniversalPage() {
            {/* STEP 5: Final Report */}
            {step === 5 && (
              <div className="animate-in zoom-in duration-500 space-y-8">
-                <div className="text-center mb-8">
+                <div className="text-center mb-6">
                    <CheckCircle2 size={64} className="mx-auto text-emerald-500 mb-4" />
-                   <h2 className="text-2xl font-newsreader font-bold text-slate-900 dark:text-white mb-2">Transação do Porto Concluída</h2>
-                   <p className="text-slate-500 dark:text-zinc-400">As bases de dados assinaladas receberam as cargas.</p>
+                   <h2 className="text-2xl font-newsreader font-bold text-slate-900 dark:text-white mb-2">Resumo da Atualização</h2>
+                   <p className="text-slate-500 dark:text-zinc-400">O processamento da sua planilha foi finalizado.</p>
                 </div>
 
                 <div className="grid grid-cols-3 gap-6 max-w-3xl mx-auto">
@@ -406,24 +396,24 @@ export default function AtualizacaoUniversalPage() {
                      <p className="text-4xl font-newsreader font-bold text-emerald-600 dark:text-emerald-400">{logs.success}</p>
                    </div>
                    <div className="bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/30 rounded-2xl p-6 text-center">
-                     <p className="text-[10px] uppercase font-bold tracking-widest text-rose-600 dark:text-rose-500 mb-2">Falha / CNJ não visto</p>
+                     <p className="text-[10px] uppercase font-bold tracking-widest text-rose-600 dark:text-rose-500 mb-2">Falhas</p>
                      <p className="text-4xl font-newsreader font-bold text-rose-600 dark:text-rose-400">{logs.failed}</p>
                    </div>
                 </div>
 
                 {logs.errors.length > 0 && (
-                   <div className="max-w-3xl mx-auto border border-rose-200 dark:border-rose-900/50 rounded-2xl overflow-hidden mt-8 bg-white dark:bg-[#151515]">
+                   <div className="max-w-3xl mx-auto border border-rose-200 dark:border-rose-900/50 rounded-2xl overflow-hidden mt-6 bg-white dark:bg-[#151515]">
                       <div className="bg-rose-50 dark:bg-rose-950/30 px-6 py-4 border-b border-rose-200 dark:border-rose-900/50 flex justify-between items-center">
-                         <h4 className="font-bold text-sm text-rose-800 dark:text-rose-200 flex items-center gap-2"><XCircle size={18} /> Auditoria de Rejeição</h4>
+                         <h4 className="font-bold text-sm text-rose-800 dark:text-rose-200 flex items-center gap-2"><XCircle size={18} /> Erros</h4>
                          <button onClick={copyErrors} className="flex items-center gap-2 text-[10px] uppercase tracking-widest font-bold text-rose-600 dark:text-rose-400 hover:text-rose-800 dark:hover:text-red-300">
-                           <Copy size={14} /> Copiar Lista
+                           <Copy size={14} /> Copiar lista de erros
                          </button>
                       </div>
-                      <div className="max-h-64 overflow-y-auto custom-scrollbar p-6 space-y-3">
+                      <div className="max-h-60 overflow-y-auto custom-scrollbar p-6 space-y-3">
                          {logs.errors.map((err, i) => (
-                            <div key={i} className="flex gap-4 p-3 bg-slate-50 dark:bg-black/30 rounded-xl border border-slate-100 dark:border-white/5 text-xs">
-                               <span className="font-mono text-slate-500 w-32 shrink-0 border-r border-slate-200 dark:border-zinc-800">{err.cnj}</span>
-                               <span className="text-rose-600 dark:text-rose-400/80 font-medium">{err.msg}</span>
+                            <div key={i} className="flex flex-col md:flex-row gap-2 md:gap-4 p-3 bg-slate-50 dark:bg-black/30 rounded-xl border border-slate-100 dark:border-white/5 text-sm">
+                               <span className="font-mono font-bold text-slate-800 dark:text-zinc-200 w-48 shrink-0">{err.cnj}</span>
+                               <span className="text-rose-600 dark:text-rose-400 font-medium">Não encontrado no banco de dados</span>
                             </div>
                          ))}
                       </div>
