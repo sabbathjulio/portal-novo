@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { 
   Building2, 
   Wallet,
@@ -11,33 +12,38 @@ import {
   Filter,
   CheckCircle2,
   AlertCircle,
-  Clock
+  Clock,
+  Database
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
 // Micro-Card Utilitário
-const KPICard = ({ title, value, subtitle, icon: Icon, trend }) => (
-  <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-md p-5 flex flex-col justify-between shadow-sm hover:shadow-md hover:border-slate-300 dark:hover:border-zinc-700 transition-all group">
-    <div className="flex justify-between items-start mb-4">
-      <div className="p-2 bg-slate-50 dark:bg-zinc-950 rounded border border-slate-100 dark:border-zinc-800 group-hover:bg-rose-50 dark:group-hover:bg-rose-900/10 transition-colors">
-        <Icon className="w-5 h-5 text-slate-500 dark:text-zinc-500 group-hover:text-rose-800 dark:group-hover:text-rose-600 transition-colors" />
+const KPICard = ({ title, value, subtitle, icon: Icon, trend, href }) => {
+  const content = (
+    <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-md p-5 flex flex-col justify-between shadow-sm hover:shadow-md hover:border-slate-300 dark:hover:border-zinc-700 transition-all group h-full">
+      <div className="flex justify-between items-start mb-4">
+        <div className="p-2 bg-slate-50 dark:bg-zinc-950 rounded border border-slate-100 dark:border-zinc-800 group-hover:bg-rose-50 dark:group-hover:bg-rose-900/10 transition-colors">
+          <Icon className="w-5 h-5 text-slate-500 dark:text-zinc-500 group-hover:text-rose-800 dark:group-hover:text-rose-600 transition-colors" />
+        </div>
+        {trend && (
+          <span className="flex items-center text-[10px] font-bold text-emerald-600 dark:text-emerald-500 bg-emerald-50 dark:bg-emerald-500/10 px-1.5 py-0.5 rounded uppercase tracking-wider">
+            {trend} <ArrowUpRight className="w-3 h-3 ml-1" />
+          </span>
+        )}
       </div>
-      {trend && (
-        <span className="flex items-center text-[10px] font-bold text-emerald-600 dark:text-emerald-500 bg-emerald-50 dark:bg-emerald-500/10 px-1.5 py-0.5 rounded uppercase tracking-wider">
-          {trend} <ArrowUpRight className="w-3 h-3 ml-1" />
-        </span>
-      )}
+      
+      <div>
+        <h3 className="text-2xl font-bold text-slate-800 dark:text-zinc-100 tracking-tight">{value}</h3>
+        <p className="text-[11px] font-bold text-slate-500 dark:text-zinc-500 uppercase tracking-widest mt-1">
+          {title}
+        </p>
+        {subtitle && <p className="text-[10px] text-slate-400 dark:text-zinc-600 mt-1">{subtitle}</p>}
+      </div>
     </div>
-    
-    <div>
-      <h3 className="text-2xl font-bold text-slate-800 dark:text-zinc-100 tracking-tight">{value}</h3>
-      <p className="text-[11px] font-bold text-slate-500 dark:text-zinc-500 uppercase tracking-widest mt-1">
-        {title}
-      </p>
-      {subtitle && <p className="text-[10px] text-slate-400 dark:text-zinc-600 mt-1">{subtitle}</p>}
-    </div>
-  </div>
-);
+  );
+
+  return href ? <Link href={href} className="block">{content}</Link> : content;
+};
 
 // Tabela Densa "Farol de Documentos"
 const DocumentRow = ({ doc, empresa, reclamante, status, dueDate }) => {
@@ -118,10 +124,10 @@ export default function DashboardHome() {
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <KPICard title="Acervo Ativo" value={stats.processos} subtitle="Processos em andamento" icon={Building2} trend="+3%" />
-        <KPICard title="Riscos provisionados" value={formatBRL(stats.financeiroValor)} subtitle="Acordos e Liquidações" icon={Wallet} />
-        <KPICard title="Pauta Semanal" value={stats.pauta} subtitle="Audiências em D-7" icon={CalendarDays} />
-        <KPICard title="Pendências" value={stats.farol} subtitle="Auditoria Documental" icon={FileWarning} trend="+2 Críticas" />
+        <KPICard title="Acervo Ativo" value={stats.processos} subtitle="Processos em andamento" icon={Building2} trend="+3%" href="/processos" />
+        <KPICard title="Riscos provisionados" value={formatBRL(stats.financeiroValor)} subtitle="Acordos e Liquidações" icon={Wallet} href="/financeiro" />
+        <KPICard title="Pauta Semanal" value={stats.pauta} subtitle="Audiências em D-7" icon={CalendarDays} href="/pauta" />
+        <KPICard title="Pendências" value={stats.farol} subtitle="Auditoria Documental" icon={FileWarning} trend="+2 Críticas" href="/farol" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -177,6 +183,12 @@ export default function DashboardHome() {
                   <p className="text-xs font-bold text-slate-800 dark:text-zinc-200 uppercase tracking-wide">Backup de Dossiês</p>
                   <p className="text-[11px] text-slate-500 dark:text-zinc-400 mt-1">A compressão dos PDFs de processos encerrados este mês concluiu com retenção no Cold Storage.</p>
                </div>
+            </div>
+            
+            <div className="pt-2 mt-4 border-t border-slate-100 dark:border-zinc-800">
+               <Link href="/admin/sincronizador" className="w-full py-2.5 flex items-center justify-center gap-2 rounded text-[10px] font-bold text-slate-500 uppercase tracking-widest hover:text-rose-800 dark:hover:text-rose-500 hover:bg-slate-50 dark:hover:bg-zinc-800 transition-all border border-transparent hover:border-slate-200 dark:hover:border-zinc-700">
+                  <Database size={12} /> Verificar Sincronia
+               </Link>
             </div>
           </div>
         </div>
