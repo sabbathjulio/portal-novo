@@ -1,4 +1,4 @@
-import { Inter, Cinzel } from 'next/font/google';
+import { Inter, Newsreader } from 'next/font/google';
 import './globals.css';
 
 const inter = Inter({ 
@@ -7,9 +7,9 @@ const inter = Inter({
   display: 'swap',
 });
 
-const cinzel = Cinzel({ 
+const newsreader = Newsreader({ 
   subsets: ['latin'],
-  variable: '--font-cinzel',
+  variable: '--font-newsreader',
   display: 'swap',
 });
 
@@ -20,8 +20,8 @@ export const metadata = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="pt-BR" className={`${inter.variable} ${cinzel.variable}`}>
-      <body className="font-inter">
+    <html lang="pt-BR" className={`${inter.variable} ${newsreader.variable}`}>
+      <body className="font-inter bg-stitch-bg text-slate-800">
         {children}
       </body>
     </html>

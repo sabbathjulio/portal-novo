@@ -1,50 +1,31 @@
 @import "tailwindcss";
 
 @theme {
-  --font-cinzel: var(--font-cinzel);
+  --font-newsreader: var(--font-newsreader);
   --font-inter: var(--font-inter);
-  --color-gold-primary: #D4AF37;
-  --color-background-midnight: #0B1120;
+  
+  --color-stitch-bg: #fbf9f3;
+  --color-stitch-sidebar: #eae8e2;
+  --color-stitch-white: #ffffff;
+  --color-stitch-burgundy: #800020;
+  --color-stitch-burgundy-dark: #570013;
 }
 
 :root {
-  --background: #0B1120;
-  --foreground: #ffffff;
-  --gold-primary: #D4AF37;
-  --gold-glow: rgba(212, 175, 55, 0.15);
+  --background: #fbf9f3;
 }
 
 body {
   background-color: var(--background);
-  color: var(--foreground);
+  color: #1e293b;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* No v4, usamos o seletor diretamente ou @utility se quisermos no @apply */
-.font-cinzel {
-  font-family: var(--font-cinzel), serif;
+.font-newsreader {
+  font-family: var(--font-newsreader), serif;
 }
 
 .font-inter {
   font-family: var(--font-inter), sans-serif;
-}
-
-.text-gold-primary {
-  color: var(--gold-primary);
-}
-
-.border-gold {
-  border-color: var(--gold-primary);
-}
-
-/* Glassmorphism manual para evitar erro de @apply do v4 */
-.glassmorphism {
-  background-color: rgba(255, 255, 255, 0.05);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.glow-radial {
-  background: radial-gradient(circle, var(--gold-glow) 0%, transparent 70%);
 }
