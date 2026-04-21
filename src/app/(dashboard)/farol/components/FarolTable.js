@@ -86,7 +86,7 @@ export default function FarolTable({ processos, onLineClick }) {
                                   <span className="text-[9px] font-bold text-slate-400 dark:text-zinc-500">{progressoPerc}%</span>
                                </div>
                                <div className="w-full h-1.5 bg-slate-100 dark:bg-zinc-800 rounded-full overflow-hidden">
-                                  <div className={`h-full transition-all duration-500 ${progressoPerc === 100 ? 'bg-emerald-500' : 'bg-stitch-burgundy dark:bg-stitch-secondary'}`} style={{ width: \`\${progressoPerc}%\` }}></div>
+                                  <div className={`h-full transition-all duration-500 ${progressoPerc === 100 ? 'bg-emerald-500' : 'bg-stitch-burgundy dark:bg-stitch-secondary'}`} style={{ width: `${progressoPerc}%` }}></div>
                                </div>
                                <span className="text-[9px] text-slate-400 dark:text-zinc-500 mt-1 truncate">{p.funcao}</span>
                             </div>
