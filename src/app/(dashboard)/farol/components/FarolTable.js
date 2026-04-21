@@ -26,12 +26,27 @@ export default function FarolTable({ processos, onLineClick }) {
     return { text: `FALTAM ${diff} DIAS`, color: "text-slate-500" };
   };
 
+  const formatDataIsoBR = (dataString) => {
+    if (!dataString || dataString === "N/A") return "N/A";
+    try {
+      const stringData = String(dataString);
+      // Se for formato seco numérico provindo do DB "YYYY-MM-DD"
+      const ISOStr = /^\d{4}-\d{2}-\d{2}$/.test(stringData) ? `${stringData}T00:00:00Z` : stringData;
+      const dataObj = new Date(ISOStr);
+      if (isNaN(dataObj.getTime())) return stringData;
+      
+      return dataObj.toLocaleDateString('pt-BR', { timeZone: 'UTC' });
+    } catch (e) {
+      return String(dataString);
+    }
+  };
+
   const calcularProximaData = (audiencias) => {
     if (!audiencias || audiencias.length === 0) return "-";
     const validas = audiencias.map(a => new Date(a.data_hora)).sort((a,b) => a - b);
     const now = new Date();
     const prox = validas.find(d => d.getTime() >= now.getTime()) || validas[validas.length - 1]; 
-    return prox.toLocaleDateString('pt-BR');
+    return prox.toLocaleDateString('pt-BR', { timeZone: 'UTC' });
   };
 
   return (
@@ -113,7 +128,7 @@ export default function FarolTable({ processos, onLineClick }) {
                          <td className="py-4 px-5">
                             <div className="flex flex-col gap-0.5">
                                <span className="text-slate-800 dark:text-zinc-300 font-medium text-[11px] truncate">
-                                  Adm: {p.admissao || "N/A"} - Dem: {p.demissao || "N/A"}
+                                  Adm: {formatDataIsoBR(p.admissao)} - Dem: {formatDataIsoBR(p.demissao)}
                                </span>
                                <span className="text-[10px] text-slate-500 dark:text-zinc-400 truncate">
                                   Total: {p.tempo_meses || p.meses || "0"} meses
