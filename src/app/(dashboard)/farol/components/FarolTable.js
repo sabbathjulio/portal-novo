@@ -45,10 +45,13 @@ export default function FarolTable({ processos, onLineClick }) {
                       Processo CNJ
                    </th>
                    <th className="py-4 px-5 text-[10px] font-inter font-bold text-slate-500 dark:text-zinc-500 uppercase tracking-widest w-[280px]">
-                      Reclamante
+                      Partes
                    </th>
                    <th className="py-4 px-5 text-[10px] font-inter font-bold text-slate-500 dark:text-zinc-500 uppercase tracking-widest">
                       Próxima Audiência
+                   </th>
+                   <th className="py-4 px-5 text-[10px] font-inter font-bold text-slate-500 dark:text-zinc-500 uppercase tracking-widest w-[160px]">
+                      Contrato
                    </th>
                    <th className="py-4 px-5 text-[10px] font-inter font-bold text-slate-500 dark:text-zinc-500 uppercase tracking-widest w-[180px]">
                       Prazos Táticos
@@ -60,7 +63,7 @@ export default function FarolTable({ processos, onLineClick }) {
              </thead>
              <tbody className="divide-y divide-slate-100 dark:divide-zinc-800/60 font-inter text-sm">
                 {processos.length === 0 ? (
-                   <tr><td colSpan={6} className="text-center p-16 text-slate-400 text-xs tracking-widest uppercase">Nenhum processo inserido na fila primária</td></tr>
+                   <tr><td colSpan={7} className="text-center p-16 text-slate-400 text-xs tracking-widest uppercase">Nenhum processo inserido na fila primária</td></tr>
                 ) : (
                   processos.map((p, idx) => {
                     const prazoMeta = calcularPrazo(p.audiencias);
@@ -80,24 +83,40 @@ export default function FarolTable({ processos, onLineClick }) {
                             </div>
                          </td>
                          <td className="py-4 px-5">
-                            <div className="flex flex-col w-full pr-6">
-                               <div className="flex justify-between items-end mb-1.5">
-                                  <span className="text-slate-800 dark:text-zinc-200 font-bold text-xs truncate max-w-[180px]">{p.reclamante}</span>
-                                  <span className="text-[9px] font-bold text-slate-400 dark:text-zinc-500">{progressoPerc}%</span>
+                            <div className="flex flex-col w-full pr-4 gap-1.5">
+                               <div className="flex flex-col gap-0.5 w-full">
+                                  <span className="text-slate-800 dark:text-zinc-200 font-bold text-xs truncate max-w-[220px]">{p.reclamante}</span>
+                                  <span className="text-[10px] text-slate-500 dark:text-zinc-400 truncate">{p.funcao || "Cargo não informado"}</span>
+                                  <span className="text-[10px] text-slate-500 dark:text-zinc-400 truncate">Réu: {p.reu || "Empresa"} | Unidade: {p.unidade || "Não informada"}</span>
                                </div>
-                               <div className="w-full h-1.5 bg-slate-100 dark:bg-zinc-800 rounded-full overflow-hidden">
-                                  <div className={`h-full transition-all duration-500 ${progressoPerc === 100 ? 'bg-emerald-500' : 'bg-stitch-burgundy dark:bg-stitch-secondary'}`} style={{ width: `${progressoPerc}%` }}></div>
+                               <div className="flex items-center gap-2 mt-0.5">
+                                  <div className="flex-1 h-1.5 bg-slate-100 dark:bg-zinc-800 rounded-full overflow-hidden">
+                                     <div className={`h-full transition-all duration-500 ${progressoPerc === 100 ? 'bg-emerald-500' : 'bg-stitch-burgundy dark:bg-stitch-secondary'}`} style={{ width: `${progressoPerc}%` }}></div>
+                                  </div>
+                                  <span className="text-[9px] font-bold text-slate-400 dark:text-zinc-500 w-6 text-right">{progressoPerc}%</span>
                                </div>
-                               <span className="text-[9px] text-slate-400 dark:text-zinc-500 mt-1 truncate">{p.funcao}</span>
+                            </div>
+                         </td>
+                         <td className="py-4 px-5">
+                            <div className="flex flex-col gap-0.5 items-start">
+                               <span className="text-slate-800 dark:text-zinc-200 font-bold text-xs truncate">
+                                  {calcularProximaData(p.audiencias)}
+                               </span>
+                               <span className="text-[10px] text-slate-500 dark:text-zinc-400 truncate w-full max-w-[140px]">
+                                  {p.audiencias && p.audiencias.length > 0 ? (p.audiencias[0].tipo || "Una") : "Sem Audiência"}
+                               </span>
+                               <span className={`inline-flex mt-1 px-1.5 py-0.5 rounded text-[8px] uppercase tracking-widest font-bold w-max border ${p.audiencias && p.audiencias.length > 0 ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-500 border-emerald-200 dark:border-emerald-800' : 'bg-slate-100 dark:bg-zinc-900 text-slate-500 dark:text-zinc-400 border-slate-200 dark:border-zinc-700'}`}>
+                                  {p.audiencias && p.audiencias.length > 0 ? "MARCADA" : "NÃO MARCADA"}
+                               </span>
                             </div>
                          </td>
                          <td className="py-4 px-5">
                             <div className="flex flex-col gap-0.5">
-                               <span className="text-slate-800 dark:text-zinc-300 font-medium text-xs">
-                                  {calcularProximaData(p.audiencias)}
+                               <span className="text-slate-800 dark:text-zinc-300 font-medium text-[11px] truncate">
+                                  Adm: {p.admissao || "N/A"} - Dem: {p.demissao || "N/A"}
                                </span>
-                               <span className="text-[9px] text-slate-400 dark:text-zinc-500 uppercase tracking-widest">
-                                  {p.audiencias && p.audiencias.length > 0 ? "Marcada" : "Desconhecida"}
+                               <span className="text-[10px] text-slate-500 dark:text-zinc-400 truncate">
+                                  Total: {p.tempo_meses || p.meses || "0"} meses
                                </span>
                             </div>
                          </td>
