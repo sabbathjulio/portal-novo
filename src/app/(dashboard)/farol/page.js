@@ -32,7 +32,7 @@ export default function FarolDocsPage() {
               audiencias ( tipo, modelo, data_hora )
             )
           `)
-          .eq('ativo_no_farol', true);
+          .neq('numero_cnj', null);
         
         if (!error && data && isMounted) {
           const dadosReais = data.map(item => ({
