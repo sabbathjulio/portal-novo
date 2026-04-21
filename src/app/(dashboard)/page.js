@@ -83,31 +83,61 @@ const DocumentRow = ({ doc, empresa, reclamante, status, dueDate }) => {
 };
 
 export default function DashboardHome() {
-  const [stats, setStats] = useState({ processos: 0, financeiroValor: 0, farol: 12, pauta: 8 });
+  const [stats, setStats] = useState({ processos: 0, financeiroValor: 0, farol: 0, pauta: 0 });
+  const [farolDocs, setFarolDocs] = useState([]);
+  const [alertasSistema, setAlertasSistema] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    async function fetchKPIs() {
+    async function fetchFromSupabase() {
       setIsLoading(true);
       try {
-        const { count: pb } = await supabase.from('processos').select('*', { count: 'exact', head: true });
-        const { data: fin } = await supabase.from('financeiro').select('valor_acordo');
-        const finTotal = fin?.reduce((acc, curr) => acc + (curr.valor_acordo || 0), 0) || 0;
+        // Lendo tudo da base bruta que foi inserida no passado pelo Códex legado
+        const { data: processos, error } = await supabase.from('processos').select('*');
         
-        setStats({ processos: pb || 0, financeiroValor: finTotal, farol: 12, pauta: 8 });
-      } catch (err) {}
+        if (!error && processos) {
+          // 1. Acervo Ativo
+          const pb = processos.length;
+
+          // 2. Financeiro (Buscando o campo valor_pago mapeado da antiga Coluna AJ)
+          const finTotal = processos.reduce((acc, curr) => {
+            const v = parseFloat(curr.valor_pago) || parseFloat(curr.valor_acordo) || parseFloat(curr.valor_acao) || 0;
+            return acc + v;
+          }, 0);
+
+          // 3. Pauta Semanal (Processos com Data de Audiência Ativa na antiga coluna F)
+          const ptCount = processos.filter(p => p.data_audiencia && p.data_audiencia.trim() !== '').length;
+
+          // 4. Farol Docs (A antiga tabela do farol ainda não subiu para nuvem. Aguardando a migração relacional 3NF.)
+          const frCount = 0;
+
+          setStats({
+            processos: pb,
+            financeiroValor: finTotal,
+            farol: frCount,
+            pauta: ptCount
+          });
+          
+          // Zerando a interface gráfica (Sem Mocks Sujos)
+          setFarolDocs([]); 
+
+          // Gerando alertas sistêmicos reais com base no status das tabelas
+          setAlertasSistema([
+            { id: 1, tipo: 'warning', titulo: 'Infraestrutura de Dados Base', msg: 'A Home está lendo temporariamente do banco unificado legado.', color: 'amber' }
+          ]);
+        }
+      } catch (err) {
+        console.error("Falha ao sincronizar KPIs", err);
+      }
       setIsLoading(false);
     }
-    fetchKPIs();
+    fetchFromSupabase();
   }, []);
 
   const formatBRL = (v) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(v);
 
-  const farolDocs = [
-    { id: 1, doc: "Cartão de Ponto (Incompleto)", empresa: "Matriz SPO", reclamante: "João S. Ferreira", status: "Pendência Crítica", dueDate: "Hoje" },
-    { id: 2, doc: "TRCT Ausente", empresa: "Filial CWB", reclamante: "Maria C. Almeida", status: "Pendência Crítica", dueDate: "Amanhã" },
-    { id: 3, doc: "Atestado Médico Ilegível", empresa: "Matriz SPO", reclamante: "Carlos E. Batista", status: "Revisão Necessária", dueDate: "25/04/2026" },
-  ];
+  // Removida: const farolDocs = [{ mock... }]
+
 
   if (isLoading) {
     return <div className="h-64 flex items-center justify-center text-sm font-bold uppercase tracking-widest text-slate-400 dark:text-zinc-600 animate-pulse">Sincronizando Matriz...</div>;
@@ -168,21 +198,26 @@ export default function DashboardHome() {
             <h2 className="text-sm font-bold uppercase tracking-widest text-slate-800 dark:text-zinc-200">Alertas do Sistema</h2>
           </div>
           <div className="bg-stitch-white dark:bg-zinc-900 rounded-md border border-slate-200 dark:border-zinc-800 p-5 shadow-sm space-y-4 transition-colors">
-            <div className="flex gap-3">
-               <div className="mt-0.5 w-2 h-2 rounded-full bg-rose-600 dark:bg-rose-500 animate-pulse shrink-0" />
-               <div>
-                  <p className="text-xs font-bold text-slate-800 dark:text-zinc-200 uppercase tracking-wide">Sincronização PJe (TRT-2)</p>
-                  <p className="text-[11px] text-slate-500 dark:text-zinc-400 mt-1">Instabilidade detectada na extração de pautas do TRT-2. O Radar reagendará a varredura em 15 minutos.</p>
-               </div>
-            </div>
-            <div className="h-px bg-slate-100 dark:bg-zinc-800" />
-            <div className="flex gap-3">
-               <div className="mt-0.5 w-2 h-2 rounded-full bg-amber-500 dark:bg-amber-400 shrink-0" />
-               <div>
-                  <p className="text-xs font-bold text-slate-800 dark:text-zinc-200 uppercase tracking-wide">Backup de Dossiês</p>
-                  <p className="text-[11px] text-slate-500 dark:text-zinc-400 mt-1">A compressão dos PDFs de processos encerrados este mês concluiu com retenção no Cold Storage.</p>
-               </div>
-            </div>
+            {alertasSistema.length === 0 ? (
+              <div className="text-center py-4">
+                <p className="text-xs font-bold text-slate-400 dark:text-zinc-500 uppercase">Não há alertas ativos.</p>
+              </div>
+            ) : (
+              alertasSistema.map((alerta, idx) => (
+                <div key={alerta.id}>
+                  <div className="flex gap-3">
+                     <div className={`mt-0.5 w-2 h-2 rounded-full bg-${alerta.color}-500 shrink-0 ${alerta.tipo === 'error' ? 'animate-pulse' : ''}`} />
+                     <div>
+                        <p className="text-xs font-bold text-slate-800 dark:text-zinc-200 uppercase tracking-wide">{alerta.titulo}</p>
+                        <p className="text-[11px] text-slate-500 dark:text-zinc-400 mt-1">{alerta.msg}</p>
+                     </div>
+                  </div>
+                  {idx < alertasSistema.length - 1 && (
+                     <div className="h-px bg-slate-100 dark:bg-zinc-800 mt-4" />
+                  )}
+                </div>
+              ))
+            )}
             
             <div className="pt-2 mt-4 border-t border-slate-100 dark:border-zinc-800">
                <Link href="/admin/sincronizador" className="w-full py-2.5 flex items-center justify-center gap-2 rounded text-[10px] font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest hover:text-stitch-burgundy dark:hover:text-stitch-secondary hover:bg-slate-50 dark:hover:bg-zinc-800/50 transition-all border border-transparent hover:border-slate-200 dark:hover:border-zinc-700">
