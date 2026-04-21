@@ -5,7 +5,7 @@ import * as XLSX from 'xlsx';
 import { supabase } from '@/lib/supabase';
 import { 
   FileSpreadsheet, Database, Loader2, ArrowRight, XCircle, 
-  CheckCircle2, Square, CheckSquare, Search, Info
+  CheckCircle2, Square, CheckSquare, Search, Info, UploadCloud
 } from 'lucide-react';
 
 const COL_DICT = {
