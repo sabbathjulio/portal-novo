@@ -1,631 +1,448 @@
 "use client";
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import * as XLSX from 'xlsx';
+import { supabase } from '@/lib/supabase';
 import { 
-  History, Search, FileSpreadsheet, Edit3, Save, X, 
-  UploadCloud, CheckSquare, Square, ChevronRight, 
-  Loader2, CheckCircle2, WifiOff, AlertTriangle, Info
+  UploadCloud, Settings2, Database, AlertTriangle, 
+  CheckCircle2, FileSpreadsheet, PlayCircle, Loader2,
+  Copy, XCircle, ChevronRight, Info
 } from 'lucide-react';
 
-// Passo 1: Mock Data e Constantes
-const MOCK_ACERVO = [
-  { 
-    index: 1, 
-    processo: "1000114-98.2026.5.02.0463", 
-    reclamante: "PAULO ROBERTO DA SILVA", 
-    tipoAudiencia: "Audiência Inicial", 
-    data: "2026-05-15", 
-    horas: "14:30", 
-    sentenca: "", 
-    obs: "Sessão aguardando subsídios.",
-    valorRO: 0, valorRR: 0, infoRecurso: "" 
-  },
-  { 
-    index: 2, 
-    processo: "0010992-88.2023.5.15.0002", 
-    reclamante: "MARIA CLARA GOMES", 
-    tipoAudiencia: "Audiência UNA", 
-    data: "2026-04-20", 
-    horas: "09:00", 
-    sentenca: "Procedência em parte. Verbas de HE deferidas.", 
-    obs: "Recurso Ordinário interposto pela ré.",
-    valorRO: 12666.00, valorRR: 0, infoRecurso: "Relator: Roberto Nobre. TRT15." 
-  },
-  { 
-    index: 3, 
-    processo: "1000542-10.2024.5.15.0100", 
-    reclamante: "ANTÔNIO SILVA ROCHA", 
-    tipoAudiencia: "Audiência de Instrução", 
-    data: "2026-06-10", 
-    horas: "10:15", 
-    sentenca: "", 
-    obs: "",
-    valorRO: 0, valorRR: 0, infoRecurso: "" 
-  }
-];
+const SUPABASE_SCHEMA = {
+  processos: [
+    { label: "Pasta", value: "pasta" },
+    { label: "Reclamante", value: "reclamante" },
+    { label: "Réu Principal", value: "reu_principal" },
+    { label: "Unidade", value: "unidade" },
+    { label: "Data Admissão", value: "data_admissao" },
+    { label: "Data Demissão", value: "data_demissao" },
+    { label: "Função", value: "funcao" },
+    { label: "Fase Atual", value: "fase_atual" },
+    { label: "Status Geral", value: "status_geral" },
+    { label: "Risco", value: "risco" },
+    { label: "Observação", value: "observacao" }
+  ],
+  financeiro: [
+    { label: "Valor da Causa", value: "valor_causa" },
+    { label: "Valor do Acordo", value: "valor_acordo" },
+    { label: "Depósito Recursal", value: "deposito_recursal" },
+    { label: "Custas", value: "custas" },
+    { label: "Condenação", value: "condenacao" }
+  ],
+  audiencias: [
+    { label: "Tipo de Audiência", value: "tipo" },
+    { label: "Data/Hora (ISO)", value: "data_hora" },
+    { label: "Status", value: "status" }
+  ],
+  farol_documentacao: [
+    { label: "Status do Farol", value: "status_farol" },
+    { label: "Marcador de Urgência", value: "is_urgente" },
+    { label: "Observação Jurídica", value: "observacao_juridica" }
+  ]
+};
 
-const MAPA_TIPO = [
-  { keys: ['audiencia una', 'una'], padrao: 'Audiência Una' },
-  { keys: ['inaugural', 'inicial', 'primeiro ato'], padrao: 'Audiência Inicial' },
-  { keys: ['instrucao e julgamento', 'instrucao', 'instrução e julgamento', 'instrução'], padrao: 'Audiência Instrução' },
-  { keys: ['conciliacao', 'conciliacão', 'concilia', 'conciliatoria'], padrao: 'Audiência Conciliação' },
-  { keys: ['prosseguimento', 'continuacao', 'continuação'], padrao: 'Prosseguimento' },
-  { keys: ['ratificacao', 'ratificação'], padrao: 'Ratificação' },
-];
+export default function AtualizacaoUniversalPage() {
+  const [step, setStep] = useState(1);
+  const [fileData, setFileData] = useState(null); // { headers: [], rows: [] }
+  const [masterKeyCol, setMasterKeyCol] = useState('');
+  const [mapping, setMapping] = useState({}); // { [headerName]: { table: '', column: '' } }
+  
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [logs, setLogs] = useState({ success: 0, failed: 0, errors: [] });
 
-export default function AtualizacaoPortfolioPage() {
-  // Estados Principais
-  const [acervo, setAcervo] = useState(MOCK_ACERVO);
-  const [busca, setBusca] = useState("");
-  const [modalEdicao, setModalEdicao] = useState(false);
-  const [processoAtivo, setProcessoAtivo] = useState(null);
-  const [abaAtiva, setAbaAtiva] = useState('info');
-
-  // Estados do Importador
-  const [isImportadorOpen, setIsImportadorOpen] = useState(false);
-  const [importStep, setImportStep] = useState(1);
-  const [linhasImportadas, setLinhasImportadas] = useState([]);
-  const [stats, setStats] = useState({ encontrados: 0, naoEncontrados: 0, total: 0 });
-
-  const resultados = useMemo(() => {
-    if (!busca) return [];
-    const t = busca.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    return acervo.filter(p => 
-      p.reclamante.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes(t) || 
-      p.processo.replace(/\D/g, "").includes(t.replace(/\D/g, ""))
-    );
-  }, [busca, acervo]);
-
-  // Funções Auxiliares
-  const normalizarProcesso = (s) => String(s || '').replace(/\D/g, '');
-  const normalizarHora = (s) => String(s || '').replace(/h/gi, ':').trim();
-  const normalizarDataISO = (val) => {
-    if (!val && val !== 0) return '';
-    if (val instanceof Date) return val.toISOString().split('T')[0];
-    const s = String(val).trim();
-    if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(s)) {
-      const [d, m, a] = s.split('/');
-      return `${a}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
-    }
-    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-    const n = parseFloat(s);
-    if (!isNaN(n) && n > 40000) {
-      const dt = new Date(Math.round((n - 25569) * 86400 * 1000));
-      return dt.toISOString().split('T')[0];
-    }
-    return s;
-  };
-
-  const normalizarTipo = (textoOriginal) => {
-    if (!textoOriginal) return '';
-    const txt = textoOriginal.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
-    for (const entry of MAPA_TIPO) {
-      for (const key of entry.keys) {
-        if (txt.includes(key)) return entry.padrao;
-      }
-    }
-    return textoOriginal; // retorna original se não achar mapeamento
-  };
-
-  // Handlers
-  const handleFicha = (p) => {
-    setProcessoAtivo({ ...p });
-    setAbaAtiva('info');
-    setModalEdicao(true);
-  };
-
-  const salvarEdicao = () => {
-    setAcervo(prev => prev.map(p => p.index === processoAtivo.index ? processoAtivo : p));
-    setModalEdicao(false);
-    alert("Códex atualizado com sucesso!");
-  };
-
+  // STEP 1: Upload e Leitura
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    setImportStep(2); // Processando
     const reader = new FileReader();
     reader.onload = (evt) => {
       try {
         const bstr = evt.target.result;
-        const wb = XLSX.read(bstr, { type: 'binary', cellDates: false });
+        const wb = XLSX.read(bstr, { type: 'binary', cellDates: true });
         const ws = wb.Sheets[wb.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' });
-
-        // Pular cabeçalho rudimentar
-        let dataRows = rows.slice(1);
-        if (rows[0] && !rows[0][0]) dataRows = rows.slice(2);
-
-        const processadas = dataRows.filter(r => r[2] && r[0]).map((row, i) => {
-          const excelData = normalizarDataISO(row[0]);
-          const excelHora = normalizarHora(row[1]);
-          const excelProc = normalizarProcesso(row[2]);
-          const excelTipo = normalizarTipo(row[6]);
-          const excelRecl = String(row[7] || '').trim();
-
-          const baseProc = acervo.find(a => normalizarProcesso(a.processo) === excelProc);
-
-          return {
-            id: i,
-            excelProc: row[2],
-            excelRecl,
-            novaData: excelData,
-            novaHora: excelHora,
-            novoTipo: excelTipo,
-            encontrado: !!baseProc,
-            baseProc: baseProc || null,
-            selecionado: !!baseProc
-          };
+        const data = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' });
+        
+        if (data.length < 2) throw new Error("Planilha vazia ou sem cabeçalho.");
+        
+        // Encontrar cabeçalho real (primeira linha com dados relevantes)
+        let headerIdx = 0;
+        for(let i=0; i < data.length; i++){
+           if (data[i].filter(Boolean).length > 1) {
+              headerIdx = i;
+              break;
+           }
+        }
+        
+        const headers = data[headerIdx].map(h => String(h).trim()).filter(Boolean);
+        const rows = data.slice(headerIdx + 1).filter(r => r.some(Boolean));
+        
+        // Converte array row para objeto espelhando o cabeçalho
+        const objRows = rows.map(r => {
+           const obj = {};
+           headers.forEach((h, i) => { obj[h] = r[i]; });
+           return obj;
         });
 
-        setLinhasImportadas(processadas);
-        setStats({
-          encontrados: processadas.filter(l => l.encontrado).length,
-          naoEncontrados: processadas.filter(l => !l.encontrado).length,
-          total: processadas.length
-        });
-        setImportStep(3); // Diff
-      } catch (err) {
-        alert("Erro ao ler planilha: " + err.message);
-        setImportStep(1);
+        setFileData({ headers, rows: objRows });
+        
+        // Autodetect CNJ if possible
+        const possibleCNJ = headers.find(h => h.toLowerCase().includes('processo') || h.toLowerCase().includes('cnj') || h.toLowerCase().includes('protocolo'));
+        if (possibleCNJ) setMasterKeyCol(possibleCNJ);
+
+        setStep(2);
+      } catch(err) {
+        alert("Falha ao ler o arquivo: " + err.message);
       }
     };
     reader.readAsBinaryString(file);
   };
 
-  const confirmarImportacao = () => {
-    setImportStep(4); // Salvando
-    setTimeout(() => {
-      const selecionados = linhasImportadas.filter(l => l.selecionado && l.encontrado);
-      setAcervo(prev => {
-        const novoAcervo = [...prev];
-        selecionados.forEach(item => {
-          const idx = novoAcervo.findIndex(a => a.index === item.baseProc.index);
-          if (idx !== -1) {
-            novoAcervo[idx] = {
-              ...novoAcervo[idx],
-              data: item.novaData || novoAcervo[idx].data,
-              horas: item.novaHora || novoAcervo[idx].horas,
-              tipoAudiencia: item.novoTipo || novoAcervo[idx].tipoAudiencia
-            };
-          }
+  // Mapeamento Handlers
+  const handleMapChange = (header, key, value) => {
+    setMapping(prev => ({
+      ...prev,
+      [header]: {
+        ...prev[header],
+        [key]: value
+      }
+    }));
+  };
+
+  const getTargetColumns = (tableName) => {
+    if (!tableName) return [];
+    return SUPABASE_SCHEMA[tableName] || [];
+  };
+
+  const getRemanescentes = () => fileData?.headers.filter(h => h !== masterKeyCol) || [];
+
+  const checkMapeamentoValido = () => {
+    if (!masterKeyCol) return false;
+    // Pelo menos 1 coluna deve ter tabela e coluna mapeados
+    return Object.values(mapping).some(m => m.table && m.column);
+  };
+
+  // Motor de Atualização (Etapa Crítica)
+  const executeBulkUpdate = async () => {
+    if (!checkMapeamentoValido()) return;
+    setStep(4);
+    setIsProcessing(true);
+    setProgress(0);
+    setLogs({ success: 0, failed: 0, errors: [] });
+    
+    let okCount = 0;
+    let failCount = 0;
+    const errorArr = [];
+
+    const totalRows = fileData.rows.length;
+
+    for (let i = 0; i < totalRows; i++) {
+        const row = fileData.rows[i];
+        const rawCnj = row[masterKeyCol];
+        
+        // Regra Crítica: Sanitização
+        if (!rawCnj) {
+            failCount++;
+            errorArr.push({ cnj: "N/A", msg: `Linha ${i+2}: Chave CNJ vazia.` });
+            continue;
+        }
+        
+        const cnjSanitizado = String(rawCnj).replace(/\D/g, '');
+        if (cnjSanitizado.length < 10) {
+            failCount++;
+            errorArr.push({ cnj: rawCnj, msg: "CNJ inválido após sanitização." });
+            continue;
+        }
+
+        // Agrupar payloads por tabela
+        let tablePayloads = {};
+        
+        Object.keys(mapping).forEach(header => {
+           const setup = mapping[header];
+           if (setup.table && setup.column && row[header]) {
+              if (!tablePayloads[setup.table]) tablePayloads[setup.table] = {};
+              // Transforma booleano se necessário e joga o valor
+              let val = row[header];
+              if (setup.column === 'is_urgente') {
+                 val = String(val).toLowerCase() === 'sim' || String(val) === 'true' || val === '1';
+              }
+              tablePayloads[setup.table][setup.column] = val;
+           }
         });
-        return novoAcervo;
-      });
-      setImportStep(5); // Sucesso
-    }, 1500);
+
+        // Executar os Updates via Supabase
+        let hasErrorInRow = false;
+        
+        const tablesToUpdate = Object.keys(tablePayloads);
+        if (tablesToUpdate.length === 0) {
+           failCount++;
+           errorArr.push({ cnj: cnjSanitizado, msg: "Nenhum dado mapeado." });
+           continue;
+        }
+
+        for (const table of tablesToUpdate) {
+            try {
+               const payload = tablePayloads[table];
+               const { data, error } = await supabase
+                  .from(table)
+                  .update(payload)
+                  .eq('numero_cnj', cnjSanitizado)
+                  .select('numero_cnj');
+
+               if (error) throw error;
+               // O update não gera erro fatal se nao achar row, mas retorna array vazio.
+               if (!data || data.length === 0) {
+                  throw new Error(`CNJ não localizado na tabela '${table}'.`);
+               }
+            } catch(dbErr) {
+               hasErrorInRow = true;
+               errorArr.push({ cnj: cnjSanitizado, msg: dbErr.message || String(dbErr) });
+            }
+        }
+
+        if (hasErrorInRow) {
+            failCount++;
+        } else {
+            okCount++;
+        }
+
+        setProgress(Math.round(((i + 1) / totalRows) * 100));
+    }
+
+    setLogs({ success: okCount, failed: failCount, errors: errorArr });
+    setIsProcessing(false);
+    setStep(5); // Concluído
+  };
+
+  const copyErrors = () => {
+     const txt = logs.errors.map(e => `CNJ: ${e.cnj} | Erro: ${e.msg}`).join('\n');
+     navigator.clipboard.writeText(txt);
+     alert('Log copiado para área de transferência!');
   };
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-700">
+    <div className="max-w-6xl mx-auto w-full px-4 py-8 space-y-6 animate-in fade-in duration-500 text-slate-800 dark:text-zinc-200">
       
-      {/* Header Central */}
-      <div className="text-center md:mb-12 mt-4">
-        <h2 className="flex items-center justify-center gap-4 text-3xl font-cinzel font-bold text-[#D4AF37] mb-3">
-          <History size={32} /> Atualização de Portfólio
-        </h2>
-        <p className="text-gray-400 text-sm font-inter">Sincronização de andamentos, sentenças e depósitos recursais no acervo.</p>
+      {/* Header */}
+      <div className="flex flex-col mb-8">
+         <h1 className="text-3xl font-newsreader font-medium text-slate-900 dark:text-zinc-100 flex items-center gap-3">
+            <Database className="text-stitch-burgundy dark:text-stitch-secondary" size={32} /> 
+            Atualizador Universal
+         </h1>
+         <p className="text-slate-500 dark:text-zinc-400 mt-2 font-inter max-w-2xl">
+            Motor de injeção direta (ETL). Especifique as diretrizes de coluna para disparar comandos de roteamento em multi-tabela para o servidor relacional em tempo real.
+         </p>
       </div>
 
-      {/* Passo 2: Layout Principal (Busca e Tabela) */}
-      <div className="bg-black/40 backdrop-blur-xl border border-white/5 rounded-2xl p-8 space-y-6">
-        <div className="flex flex-col md:flex-row gap-6 items-end">
-          <div className="flex-1 space-y-2">
-            <label className="text-[10px] text-gray-500 uppercase tracking-widest font-bold ml-1">Consulta de Protocolo</label>
-            <div className="relative">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 w-5 h-5" />
-              <input 
-                type="text" 
-                value={busca}
-                onChange={e => setBusca(e.target.value)}
-                placeholder="Localizar Reclamante ou Processo..." 
-                className="w-full bg-black/50 border border-white/10 rounded-xl py-4 pl-12 pr-6 text-sm text-white focus:border-[#D4AF37]/50 outline-none transition-all"
-              />
-            </div>
-          </div>
-          <button 
-            onClick={() => { setImportStep(1); setIsImportadorOpen(true); }}
-            className="flex items-center gap-3 px-8 py-4 bg-transparent border border-[#D4AF37]/40 text-[#D4AF37] rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-[#D4AF37]/10 transition-all group h-[54px]"
-          >
-            <FileSpreadsheet className="w-5 h-5 group-hover:scale-110 transition-transform" /> Importar Pauta Excel
-          </button>
+      {/* Stepper Wizard Layer */}
+      <div className="bg-white dark:bg-[#151515] border border-slate-200 dark:border-zinc-800/80 rounded-2xl shadow-sm overflow-hidden">
+        
+        {/* Progress Tracker */}
+        <div className="flex border-b border-slate-100 dark:border-zinc-800/60 bg-slate-50/50 dark:bg-black/20">
+           <div className={`flex-1 p-4 text-xs font-bold font-inter uppercase tracking-widest text-center ${step >= 1 ? 'text-stitch-burgundy dark:text-stitch-secondary' : 'text-slate-400'}`}>1. Importação</div>
+           <div className={`flex-1 p-4 text-xs font-bold font-inter uppercase tracking-widest text-center border-l border-slate-200 dark:border-zinc-800 ${step >= 2 ? 'text-stitch-burgundy dark:text-stitch-secondary' : 'text-slate-400'}`}>2. Chave Mestra</div>
+           <div className={`flex-1 p-4 text-xs font-bold font-inter uppercase tracking-widest text-center border-l border-slate-200 dark:border-zinc-800 ${step >= 3 ? 'text-stitch-burgundy dark:text-stitch-secondary' : 'text-slate-400'}`}>3. Mapeamento</div>
+           <div className={`flex-1 p-4 text-xs font-bold font-inter uppercase tracking-widest text-center border-l border-slate-200 dark:border-zinc-800 ${step >= 4 ? 'text-stitch-burgundy dark:text-stitch-secondary' : 'text-slate-400'}`}>4. Tráfego</div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-separate border-spacing-y-3">
-            <thead>
-              <tr className="text-[10px] text-gray-500 uppercase tracking-widest font-bold">
-                <th className="px-6 py-3">Protocolo</th>
-                <th className="px-6 py-3">Titular (Reclamante)</th>
-                <th className="px-6 py-3">Sessão Atual</th>
-                <th className="px-6 py-3">Cronograma</th>
-                <th className="px-6 py-3 text-center">Ação</th>
-              </tr>
-            </thead>
-            <tbody>
-              {resultados.length > 0 ? (
-                resultados.map((p, i) => (
-                  <tr key={i} className="group">
-                    <td className="px-6 py-4 bg-white/5 border-y border-l border-white/5 rounded-l-xl font-mono text-xs text-gray-400">{p.processo}</td>
-                    <td className="px-6 py-4 bg-white/5 border-y border-white/5 font-bold text-sm">{p.reclamante}</td>
-                    <td className="px-6 py-4 bg-white/5 border-y border-white/5 text-[10px] uppercase text-gray-500">{p.tipoAudiencia}</td>
-                    <td className="px-6 py-4 bg-white/5 border-y border-white/5 font-mono text-xs text-[#D4AF37]">
-                      {p.data ? p.data.split('-').reverse().join('/') : '-'} {p.horas || ''}
-                    </td>
-                    <td className="px-6 py-4 bg-white/5 border-y border-r border-white/5 rounded-r-xl text-center">
-                      <button 
-                        onClick={() => handleFicha(p)}
-                        className="px-4 py-2 bg-[#D4AF37]/10 text-[#D4AF37] border border-[#D4AF37]/30 rounded-lg text-[10px] font-bold uppercase tracking-widest hover:bg-[#D4AF37] hover:text-black transition-all"
-                      >
-                        Ficha
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan="5" className="px-6 py-20 text-center text-gray-500 font-inter text-sm bg-black/20 rounded-xl border border-dashed border-white/5">
-                    {busca ? "Nenhum registro localizado." : "Utilize a busca acima para filtrar o acervo."}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Passo 3: Modal de Edição (Ficha) */}
-      {modalEdicao && processoAtivo && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 sm:p-12 animate-in fade-in duration-300">
-          <div className="absolute inset-0 bg-black/90 backdrop-blur-md" onClick={() => setModalEdicao(false)} />
-          <div className="relative w-full max-w-3xl bg-[#0B1120] border border-[#D4AF37]/30 rounded-2xl shadow-[0_0_80px_rgba(212,175,55,0.15)] overflow-hidden animate-in slide-in-from-bottom-8 duration-500 flex flex-col max-h-full">
-            
-            {/* Modal Header & Tabs */}
-            <div className="p-8 pb-0 border-b border-white/5">
-              <div className="flex justify-between items-center mb-8">
-                <h3 className="font-cinzel text-xl font-bold text-[#D4AF37] flex items-center gap-4">
-                  <Edit3 size={24} /> {processoAtivo.reclamante}
-                </h3>
-                <button onClick={() => setModalEdicao(false)} className="text-gray-500 hover:text-white transition-colors">
-                  <X size={24} />
-                </button>
-              </div>
-
-              <div className="flex gap-10">
-                <button 
-                  onClick={() => setAbaAtiva('info')} 
-                  className={`pb-4 text-[11px] font-cinzel uppercase tracking-widest border-b-2 transition-all ${abaAtiva === 'info' ? 'text-[#D4AF37] border-[#D4AF37]' : 'text-gray-500 border-transparent hover:text-gray-300'}`}
-                >
-                  I. Andamento & Sentença
-                </button>
-                <button 
-                  onClick={() => setAbaAtiva('rec')} 
-                  className={`pb-4 text-[11px] font-cinzel uppercase tracking-widest border-b-2 transition-all ${abaAtiva === 'rec' ? 'text-[#D4AF37] border-[#D4AF37]' : 'text-gray-500 border-transparent hover:text-gray-300'}`}
-                >
-                  II. Recursos & RO/RR
-                </button>
-              </div>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
-              {abaAtiva === 'info' ? (
-                <div className="space-y-6">
-                  <div className="space-y-2">
-                    <label className="text-[10px] text-gray-500 uppercase tracking-widest font-bold">Status / Tipo de Audiência</label>
-                    <input 
-                      type="text" 
-                      value={processoAtivo.tipoAudiencia} 
-                      onChange={e => setProcessoAtivo({...processoAtivo, tipoAudiencia: e.target.value})}
-                      className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-sm text-white focus:border-[#D4AF37]/50 outline-none transition-all" 
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                      <label className="text-[10px] text-gray-500 uppercase tracking-widest font-bold">Data da Sessão</label>
-                      <input 
-                        type="date" 
-                        value={processoAtivo.data}
-                        onChange={e => setProcessoAtivo({...processoAtivo, data: e.target.value})}
-                        className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-sm text-white focus:border-[#D4AF37]/50 outline-none transition-all [color-scheme:dark]" 
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-[10px] text-gray-500 uppercase tracking-widest font-bold">Horário</label>
-                      <input 
-                        type="time" 
-                        value={processoAtivo.horas}
-                        onChange={e => setProcessoAtivo({...processoAtivo, horas: e.target.value})}
-                        className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-sm text-white focus:border-[#D4AF37]/50 outline-none transition-all [color-scheme:dark]" 
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] text-gray-500 uppercase tracking-widest font-bold">Resumo Decisório / Sentença</label>
-                    <textarea 
-                      value={processoAtivo.sentenca} 
-                      onChange={e => setProcessoAtivo({...processoAtivo, sentenca: e.target.value})}
-                      rows={3} 
-                      className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-sm text-white focus:border-[#D4AF37]/50 outline-none transition-all leading-relaxed" 
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] text-gray-500 uppercase tracking-widest font-bold">Observações Gerais</label>
-                    <textarea 
-                      value={processoAtivo.obs} 
-                      onChange={e => setProcessoAtivo({...processoAtivo, obs: e.target.value})}
-                      rows={3} 
-                      className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-sm text-white focus:border-[#D4AF37]/50 outline-none transition-all leading-relaxed" 
-                    />
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-6">
-                  <div className="grid grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                      <label className="text-[10px] text-gray-500 uppercase tracking-widest font-bold">Depósito Recursal (RO)</label>
-                      <input 
-                        type="text" 
-                        value={processoAtivo.valorRO ? `R$ ${processoAtivo.valorRO.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : ""}
-                        onChange={e => {
-                          const val = parseFloat(e.target.value.replace(/\D/g, '')) / 100;
-                          setProcessoAtivo({...processoAtivo, valorRO: isNaN(val) ? 0 : val});
-                        }}
-                        className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-sm font-mono text-[#D4AF37] font-bold focus:border-[#D4AF37]/50 outline-none transition-all" 
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-[10px] text-gray-500 uppercase tracking-widest font-bold">Depósito Recursal (RR)</label>
-                      <input 
-                        type="text" 
-                        value={processoAtivo.valorRR ? `R$ ${processoAtivo.valorRR.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : ""}
-                        onChange={e => {
-                          const val = parseFloat(e.target.value.replace(/\D/g, '')) / 100;
-                          setProcessoAtivo({...processoAtivo, valorRR: isNaN(val) ? 0 : val});
-                        }}
-                        className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-sm font-mono text-[#D4AF37] font-bold focus:border-[#D4AF37]/50 outline-none transition-all" 
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] text-gray-500 uppercase tracking-widest font-bold">Detalhes do Fluxo Recursal</label>
-                    <textarea 
-                      value={processoAtivo.infoRecurso} 
-                      onChange={e => setProcessoAtivo({...processoAtivo, infoRecurso: e.target.value})}
-                      rows={6} 
-                      className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-sm text-white focus:border-[#D4AF37]/50 outline-none transition-all leading-relaxed" 
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="p-8 border-t border-white/5 bg-black/20 flex gap-4">
-              <button 
-                onClick={salvarEdicao}
-                className="flex-1 py-4 bg-gradient-to-r from-[#D4AF37] to-[#B8860B] text-black font-cinzel font-bold text-xs uppercase tracking-widest rounded-xl hover:scale-[1.02] transition-transform flex items-center justify-center gap-3 shadow-xl shadow-[#D4AF37]/10"
-              >
-                <Save size={18} /> ATUALIZAR CÓDEX
-              </button>
-              <button 
-                onClick={() => setModalEdicao(false)}
-                className="px-8 py-4 border border-white/10 text-gray-500 rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-white/5 hover:text-white transition-all"
-              >
-                CANCELAR
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Passo 4: Overlay do Importador Excel (Os 5 Steps) */}
-      {isImportadorOpen && (
-        <div className="fixed inset-0 z-[200] flex flex-col p-6 sm:p-20 overflow-y-auto animate-in fade-in duration-300 bg-black/95 backdrop-blur-2xl custom-scrollbar">
-          <div className="max-w-4xl mx-auto w-full relative">
-            
-            {/* Stepper Superior */}
-            <div className="flex justify-between items-center mb-16 px-4">
-              <h2 className="font-cinzel text-2xl font-bold text-[#D4AF37] flex items-center gap-4">
-                <FileSpreadsheet size={28} /> Importação de Pauta
-              </h2>
-              <button onClick={() => setIsImportadorOpen(false)} className="p-2 border border-white/10 rounded-lg text-gray-500 hover:text-white transition-all">
-                <X size={20} />
-              </button>
-            </div>
-
-            {/* Step 1: Upload */}
-            {importStep === 1 && (
-              <div className="animate-in slide-in-from-bottom-8 duration-500 space-y-10">
-                <label className="block group cursor-pointer">
-                   <div className="bg-[#D4AF37]/5 border-2 border-dashed border-[#D4AF37]/20 rounded-3xl p-20 text-center transition-all group-hover:border-[#D4AF37]/50 group-hover:bg-[#D4AF37]/10">
-                      <div className="w-20 h-20 bg-black/40 rounded-full flex items-center justify-center mx-auto mb-8 group-hover:scale-110 transition-transform">
-                        <UploadCloud size={40} className="text-[#D4AF37]" />
+        <div className="p-8">
+           {/* STEP 1: UPLOAD */}
+           {step === 1 && (
+             <div className="animate-in slide-in-from-bottom-4 duration-300">
+                <label className="block cursor-pointer group">
+                   <div className="border-2 border-dashed border-slate-300 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-900/30 rounded-2xl p-24 text-center transition-all hover:bg-slate-100 dark:hover:bg-zinc-800/50">
+                      <div className="w-20 h-20 bg-white dark:bg-black/40 shadow-sm border border-slate-200 dark:border-zinc-700 rounded-full flex items-center justify-center mx-auto mb-6 group-hover:scale-110 transition-transform">
+                        <FileSpreadsheet size={36} className="text-slate-400 dark:text-zinc-500 group-hover:text-stitch-burgundy dark:group-hover:text-stitch-secondary" />
                       </div>
-                      <p className="text-[#D4AF37] text-xl font-bold font-cinzel mb-2">Arraste o arquivo Excel aqui</p>
-                      <p className="text-gray-500 text-sm">ou clique para selecionar · .xlsx / .xls</p>
-                      <input type="file" className="hidden" accept=".xlsx, .xls" onChange={handleFileUpload} />
+                      <h3 className="text-xl font-bold font-inter text-slate-800 dark:text-zinc-200 mb-2">Arraste a sua planilha base</h3>
+                      <p className="text-slate-500 dark:text-zinc-500 text-sm">Extensões suportadas: .csv, .xls, .xlsx</p>
+                      <input type="file" className="hidden" accept=".csv, .xls, .xlsx" onChange={handleFileUpload} />
                    </div>
                 </label>
+             </div>
+           )}
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 text-xs text-gray-400 bg-black/40 border border-white/5 rounded-2xl p-8">
-                  <div className="space-y-4">
-                    <p className="text-[#D4AF37] font-bold uppercase tracking-widest border-b border-[#D4AF37]/20 pb-2 flex items-center gap-2"><Info size={14} /> Colunas Requeridas</p>
-                    <ul className="space-y-2">
-                       <li className="flex gap-2">🟢 <strong className="text-white">Col A:</strong> Data da audiência <span className="opacity-50">(dd/mm/aaaa)</span></li>
-                       <li className="flex gap-2">🟢 <strong className="text-white">Col B:</strong> Horário <span className="opacity-50">(ex: 14:30 ou 14h30)</span></li>
-                       <li className="flex gap-2">🟢 <strong className="text-white">Col C:</strong> Número do processo CNJ</li>
-                       <li className="flex gap-2">🟢 <strong className="text-white">Col G:</strong> Tipo da Audiência</li>
-                    </ul>
-                  </div>
-                  <div className="space-y-4">
-                    <p className="text-gray-500 font-bold uppercase tracking-widest border-b border-white/10 pb-2 flex items-center gap-2"><AlertTriangle size={14} /> Observações</p>
-                    <p className="leading-relaxed">O sistema tentará casar o <strong>Número do Processo</strong> com os {acervo.length} registros que você possui no acervo local. Dados não encontrados serão sinalizados com alerta vermelho.</p>
-                  </div>
+           {/* STEP 2: CHAVE MESTRA */}
+           {step === 2 && fileData && (
+             <div className="animate-in slide-in-from-right-4 duration-300 max-w-2xl mx-auto space-y-8">
+                <div className="text-center">
+                   <Settings2 size={48} className="mx-auto text-stitch-burgundy dark:text-stitch-secondary mb-4" />
+                   <h2 className="text-2xl font-newsreader font-medium mb-2 text-slate-900 dark:text-zinc-100">Selecionar Index da Base</h2>
+                   <p className="text-slate-500 dark:text-zinc-400">Qual coluna da sua planilha representa o protocolo universal (CNJ)?</p>
                 </div>
-              </div>
-            )}
-
-            {/* Step 2: Processando */}
-            {importStep === 2 && (
-              <div className="py-32 text-center animate-in zoom-in duration-500">
-                <Loader2 size={64} className="text-[#D4AF37] animate-spin mx-auto mb-8" />
-                <h3 className="text-[#D4AF37] font-cinzel text-xl font-bold mb-2">Processando Planilha...</h3>
-                <p className="text-gray-500 text-sm">Analisando e cruzando com a base corporativa.</p>
-              </div>
-            )}
-
-            {/* Step 3: Preview / Diff */}
-            {importStep === 3 && (
-              <div className="animate-in slide-in-from-bottom-8 duration-500 space-y-8">
-                {/* Stats Bar */}
-                <div className="grid grid-cols-3 bg-black/40 border border-white/5 rounded-2xl overflow-hidden">
-                   <div className="p-6 text-center border-r border-white/5">
-                      <div className="text-4xl font-cinzel font-bold text-green-500">{stats.encontrados}</div>
-                      <div className="text-[10px] text-gray-500 uppercase font-bold mt-2">Localizados</div>
-                   </div>
-                   <div className="p-6 text-center border-r border-white/5">
-                      <div className="text-4xl font-cinzel font-bold text-red-500">{stats.naoEncontrados}</div>
-                      <div className="text-[10px] text-gray-500 uppercase font-bold mt-2">Não Localizados</div>
-                   </div>
-                   <div className="p-6 text-center">
-                      <div className="text-4xl font-cinzel font-bold text-[#D4AF37]">{stats.total}</div>
-                      <div className="text-[10px] text-gray-500 uppercase font-bold mt-2">Total Lote</div>
-                   </div>
-                </div>
-
-                <div className="flex justify-between items-center bg-white/5 p-4 rounded-xl border border-white/5">
-                   <div className="flex gap-4">
-                      <button 
-                        onClick={() => setLinhasImportadas(prev => prev.map(l => ({...l, selecionado: true})))}
-                        className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-[#D4AF37] hover:text-white transition-colors"
-                      >
-                         <CheckSquare size={14} /> Marcar Todos
-                      </button>
-                      <button 
-                        onClick={() => setLinhasImportadas(prev => prev.map(l => ({...l, selecionado: false})))}
-                        className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-gray-500 hover:text-white transition-colors"
-                      >
-                         <Square size={14} /> Desmarcar
-                      </button>
-                   </div>
-                   <button 
-                    onClick={confirmarImportacao}
-                    disabled={linhasImportadas.filter(l => l.selecionado).length === 0}
-                    className="px-6 py-2 bg-green-500 text-black rounded-lg text-[10px] font-bold uppercase tracking-widest hover:scale-105 transition-all shadow-lg shadow-green-500/10 disabled:opacity-30"
+                
+                <div className="p-6 bg-slate-50 dark:bg-black/30 border border-slate-200 dark:border-white/5 rounded-2xl flex flex-col items-center">
+                   <select 
+                     className="w-full max-w-md p-4 bg-white dark:bg-[#151515] border border-slate-200 dark:border-white/10 rounded-xl text-slate-800 dark:text-zinc-200 focus:outline-none focus:border-stitch-burgundy text-sm font-medium"
+                     value={masterKeyCol}
+                     onChange={(e) => setMasterKeyCol(e.target.value)}
                    >
-                     Confirmar Importação em Lote
+                     <option value="" disabled>--- Selecione a Coluna ---</option>
+                     {fileData.headers.map(h => <option key={h} value={h}>{h}</option>)}
+                   </select>
+
+                   <div className="mt-8 flex gap-2 items-center text-xs text-slate-500 bg-black/5 dark:bg-black p-4 rounded-xl border border-dashed border-slate-300 dark:border-white/10 w-full max-w-md">
+                     <AlertTriangle size={16} className="text-amber-500 shrink-0" />
+                     <p>A engine aplicará sanitização automática <code className="bg-black/10 dark:bg-white/10 px-1 rounded">replace(/\D/g, '')</code> na informação dessa coluna antes de cruzar com as APIs.</p>
+                   </div>
+                </div>
+
+                <div className="flex justify-between border-t border-slate-200 dark:border-white/5 pt-6 mt-8">
+                   <button onClick={() => setStep(1)} className="px-6 py-3 font-bold uppercase tracking-widest text-xs text-slate-500 hover:text-slate-800 dark:hover:text-white transition-colors">Voltar</button>
+                   <button onClick={() => setStep(3)} disabled={!masterKeyCol} className="px-8 py-3 bg-slate-900 dark:bg-white text-white dark:text-black font-bold uppercase tracking-widest text-xs rounded-lg hover:shadow-lg transition-all disabled:opacity-50">Avançar Mapeamento</button>
+                </div>
+             </div>
+           )}
+
+           {/* STEP 3: Mapeamento DE-PARA */}
+           {step === 3 && fileData && (
+             <div className="animate-in slide-in-from-right-4 duration-300 space-y-6">
+                <div>
+                   <h2 className="text-2xl font-newsreader font-medium mb-1 text-slate-900 dark:text-zinc-100 flex items-center gap-3">
+                     Configurar De-Para
+                     <span className="bg-slate-100 dark:bg-zinc-800 text-xs px-2 py-1 rounded font-mono font-bold text-slate-700 dark:text-zinc-400 border border-slate-200 dark:border-zinc-700">Chave base: {masterKeyCol}</span>
+                   </h2>
+                   <p className="text-sm text-slate-500 dark:text-zinc-400">Arquitete as vias de injeção. Ignore as colunas que não desejar importar.</p>
+                </div>
+
+                <div className="border border-slate-200 dark:border-white/5 rounded-2xl overflow-hidden bg-slate-50 dark:bg-black/20">
+                   <div className="grid grid-cols-12 gap-4 p-4 border-b border-slate-200 dark:border-white/5 font-bold uppercase tracking-widest text-[10px] text-slate-500 mr-2">
+                       <div className="col-span-4">Coluna Matriz (Sua Planilha)</div>
+                       <div className="col-span-4 pl-2">1. Cluster Destino (Tabela)</div>
+                       <div className="col-span-4 pl-2">2. End-Node (Coluna)</div>
+                   </div>
+                   
+                   <div className="max-h-[50vh] overflow-y-auto custom-scrollbar p-2 space-y-2">
+                      {getRemanescentes().map(header => {
+                         const currentMap = mapping[header] || { table: "", column: "" };
+                         const colsAvailable = getTargetColumns(currentMap.table);
+
+                         return (
+                           <div key={header} className="grid grid-cols-12 gap-4 items-center bg-white dark:bg-[#151515] p-3 rounded-xl border border-slate-100 dark:border-white/5 shadow-sm">
+                              <div className="col-span-4 pl-2 flex items-center gap-2">
+                                 <div className="w-1.5 h-1.5 rounded-full bg-slate-300 dark:bg-zinc-700"></div>
+                                 <span className="font-mono text-xs font-bold text-slate-800 dark:text-zinc-300 truncate" title={header}>{header}</span>
+                              </div>
+                              <div className="col-span-4">
+                                 <select 
+                                   className="w-full p-2 bg-slate-50 dark:bg-black/50 border border-slate-200 dark:border-white/10 rounded-lg text-xs font-medium text-slate-700 dark:text-zinc-300 focus:outline-none focus:border-stitch-burgundy"
+                                   value={currentMap.table}
+                                   onChange={(e) => handleMapChange(header, "table", e.target.value)}
+                                 >
+                                    <option value="">-- Ignorar --</option>
+                                    <option value="processos">Tabela ._processos</option>
+                                    <option value="financeiro">Tabela ._financeiro</option>
+                                    <option value="audiencias">Tabela ._audiencias</option>
+                                    <option value="farol_documentacao">Tabela ._farol</option>
+                                 </select>
+                              </div>
+                              <div className="col-span-4">
+                                 <select 
+                                   className="w-full p-2 bg-slate-50 dark:bg-black/50 border border-slate-200 dark:border-white/10 rounded-lg text-xs font-medium text-slate-700 dark:text-zinc-300 focus:outline-none focus:border-stitch-burgundy disabled:opacity-30"
+                                   value={currentMap.column}
+                                   onChange={(e) => handleMapChange(header, "column", e.target.value)}
+                                   disabled={!currentMap.table}
+                                 >
+                                    <option value="">Selecione Coluna...</option>
+                                    {colsAvailable.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                                 </select>
+                              </div>
+                           </div>
+                         );
+                      })}
+                   </div>
+                </div>
+
+                <div className="flex justify-between border-t border-slate-200 dark:border-white/5 pt-6 mt-6">
+                   <button onClick={() => setStep(2)} className="px-6 py-3 font-bold uppercase tracking-widest text-xs text-slate-500 hover:text-slate-800 dark:hover:text-white transition-colors">Voltar</button>
+                   <button 
+                     onClick={executeBulkUpdate} 
+                     disabled={!checkMapeamentoValido()}
+                     className="px-8 py-3 bg-gradient-to-r from-stitch-burgundy to-[#b32035] dark:from-stitch-secondary dark:to-[#eabe5e] text-white dark:text-black font-bold uppercase tracking-widest text-xs rounded-lg flex items-center gap-2 hover:scale-[1.02] shadow-lg shadow-stitch-burgundy/20 disabled:opacity-40 transition-all"
+                   >
+                     <PlayCircle size={18} /> INICIAR INJEÇÃO DE DADOS
                    </button>
                 </div>
+             </div>
+           )}
 
-                {/* Lista de Cards Diff */}
-                <div className="space-y-4">
-                  {linhasImportadas.map((item, idx) => (
-                    <div 
-                      key={idx} 
-                      className={`p-6 rounded-2xl border transition-all ${!item.encontrado ? 'border-red-500/20 bg-red-500/5' : item.selecionado ? 'border-[#D4AF37]/50 bg-[#D4AF37]/5' : 'border-white/5 bg-black/40'}`}
-                    >
-                      <div className="flex justify-between items-center mb-6">
-                        <div className="flex items-center gap-4">
-                           <div 
-                             onClick={() => item.encontrado && setLinhasImportadas(prev => prev.map(l => l.id === item.id ? {...l, selecionado: !l.selecionado} : l))}
-                             className={`w-6 h-6 rounded border flex items-center justify-center cursor-pointer transition-all ${item.selecionado ? 'bg-[#D4AF37] border-[#D4AF37]' : 'border-white/20 bg-black/20'}`}
-                           >
-                             {item.selecionado && <CheckSquare size={14} className="text-black font-bold" />}
-                           </div>
-                           <div>
-                              <p className="text-xs font-mono text-gray-500">{item.excelProc}</p>
-                              <h4 className="text-sm font-bold text-white">{item.excelRecl || "Desconhecido"}</h4>
-                           </div>
-                        </div>
-                        {!item.encontrado && <span className="px-3 py-1 bg-red-500/20 text-red-500 text-[9px] font-bold uppercase rounded-full border border-red-500/30">Não na Base</span>}
-                        {item.encontrado && <span className="px-3 py-1 bg-green-500/20 text-green-500 text-[9px] font-bold uppercase rounded-full border border-green-500/30">Localizado</span>}
+           {/* STEP 4: Processing */}
+           {step === 4 && (
+             <div className="animate-in fade-in py-24 flex flex-col items-center justify-center space-y-6">
+                <Loader2 size={48} className="animate-spin text-stitch-burgundy dark:text-stitch-secondary" />
+                <h2 className="text-xl font-newsreader font-bold text-slate-800 dark:text-zinc-100">Autenticando Nodes Triplos...</h2>
+                
+                <div className="w-full max-w-sm space-y-2">
+                   <div className="flex justify-between text-xs font-mono text-slate-500 dark:text-zinc-400">
+                      <span>Progresso da varredura</span>
+                      <span>{progress}%</span>
+                   </div>
+                   <div className="h-2 w-full bg-slate-100 dark:bg-zinc-800 rounded-full overflow-hidden">
+                      <div className="h-full bg-stitch-burgundy dark:bg-stitch-secondary transition-all duration-300" style={{ width: `${progress}%` }}></div>
+                   </div>
+                </div>
+                <p className="text-xs text-slate-400">Sincronizando {fileData?.rows.length} registros com o Supabase Realtime.</p>
+             </div>
+           )}
+
+           {/* STEP 5: Final Report */}
+           {step === 5 && (
+             <div className="animate-in zoom-in duration-500 space-y-8">
+                <div className="text-center mb-8">
+                   <CheckCircle2 size={64} className="mx-auto text-emerald-500 mb-4" />
+                   <h2 className="text-2xl font-newsreader font-bold text-slate-900 dark:text-white mb-2">Transação do Porto Concluída</h2>
+                   <p className="text-slate-500 dark:text-zinc-400">As bases de dados assinaladas receberam as cargas.</p>
+                </div>
+
+                <div className="grid grid-cols-3 gap-6 max-w-3xl mx-auto">
+                   <div className="bg-slate-50 dark:bg-black/30 border border-slate-200 dark:border-white/5 rounded-2xl p-6 text-center">
+                     <p className="text-[10px] uppercase font-bold tracking-widest text-slate-500 dark:text-zinc-500 mb-2">Lidos Enfileirados</p>
+                     <p className="text-4xl font-newsreader text-slate-800 dark:text-zinc-100">{fileData.rows.length}</p>
+                   </div>
+                   <div className="bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/30 rounded-2xl p-6 text-center">
+                     <p className="text-[10px] uppercase font-bold tracking-widest text-emerald-600 dark:text-emerald-500 mb-2">Linhas Atualizadas</p>
+                     <p className="text-4xl font-newsreader font-bold text-emerald-600 dark:text-emerald-400">{logs.success}</p>
+                   </div>
+                   <div className="bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/30 rounded-2xl p-6 text-center">
+                     <p className="text-[10px] uppercase font-bold tracking-widest text-rose-600 dark:text-rose-500 mb-2">Falha / CNJ não visto</p>
+                     <p className="text-4xl font-newsreader font-bold text-rose-600 dark:text-rose-400">{logs.failed}</p>
+                   </div>
+                </div>
+
+                {logs.errors.length > 0 && (
+                   <div className="max-w-3xl mx-auto border border-rose-200 dark:border-rose-900/50 rounded-2xl overflow-hidden mt-8 bg-white dark:bg-[#151515]">
+                      <div className="bg-rose-50 dark:bg-rose-950/30 px-6 py-4 border-b border-rose-200 dark:border-rose-900/50 flex justify-between items-center">
+                         <h4 className="font-bold text-sm text-rose-800 dark:text-rose-200 flex items-center gap-2"><XCircle size={18} /> Auditoria de Rejeição</h4>
+                         <button onClick={copyErrors} className="flex items-center gap-2 text-[10px] uppercase tracking-widest font-bold text-rose-600 dark:text-rose-400 hover:text-rose-800 dark:hover:text-red-300">
+                           <Copy size={14} /> Copiar Lista
+                         </button>
                       </div>
+                      <div className="max-h-64 overflow-y-auto custom-scrollbar p-6 space-y-3">
+                         {logs.errors.map((err, i) => (
+                            <div key={i} className="flex gap-4 p-3 bg-slate-50 dark:bg-black/30 rounded-xl border border-slate-100 dark:border-white/5 text-xs">
+                               <span className="font-mono text-slate-500 w-32 shrink-0 border-r border-slate-200 dark:border-zinc-800">{err.cnj}</span>
+                               <span className="text-rose-600 dark:text-rose-400/80 font-medium">{err.msg}</span>
+                            </div>
+                         ))}
+                      </div>
+                   </div>
+                )}
 
-                      {item.encontrado && (
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                           <div className="space-y-1">
-                              <p className="text-[9px] text-gray-500 uppercase font-bold mb-2">Cronograma (Data)</p>
-                              <div className="flex items-center gap-3 text-xs">
-                                 <span className="text-gray-500 font-mono">{item.baseProc.data?.split('-').reverse().join('/') || '---'}</span>
-                                 <ChevronRight size={12} className="text-gray-600" />
-                                 <span className={`font-mono font-bold ${item.novaData !== item.baseProc.data ? 'text-[#D4AF37]' : 'text-gray-400'}`}>
-                                    {item.novaData?.split('-').reverse().join('/') || 'Sem Alterar'}
-                                 </span>
-                              </div>
-                           </div>
-                           <div className="space-y-1">
-                              <p className="text-[9px] text-gray-500 uppercase font-bold mb-2">Horário</p>
-                              <div className="flex items-center gap-3 text-xs">
-                                 <span className="text-gray-500 font-mono">{item.baseProc.horas || '---'}</span>
-                                 <ChevronRight size={12} className="text-gray-600" />
-                                 <span className={`font-mono font-bold ${item.novaHora !== item.baseProc.horas ? 'text-[#D4AF37]' : 'text-gray-400'}`}>
-                                    {item.novaHora || item.baseProc.horas}
-                                 </span>
-                              </div>
-                           </div>
-                           <div className="space-y-1">
-                              <p className="text-[9px] text-gray-500 uppercase font-bold mb-2">Sessão</p>
-                              <div className="flex items-center gap-3 text-xs">
-                                 <span className="text-gray-500 truncate max-w-[80px]">{item.baseProc.tipoAudiencia || '---'}</span>
-                                 <ChevronRight size={12} className="text-gray-600" />
-                                 <span className={`font-bold truncate max-w-[120px] ${item.novoTipo !== item.baseProc.tipoAudiencia ? 'text-[#D4AF37]' : 'text-gray-400'}`}>
-                                    {item.novoTipo || item.baseProc.tipoAudiencia}
-                                 </span>
-                              </div>
-                           </div>
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                <div className="text-center pt-8">
+                   <button 
+                     onClick={() => { setStep(1); setFileData(null); setMasterKeyCol(""); setMapping({}); }} 
+                     className="px-8 py-4 bg-slate-900 dark:bg-white text-white dark:text-black font-bold uppercase tracking-widest text-xs rounded-xl hover:shadow-lg transition-all"
+                   >
+                     Fazer Novo Upload
+                   </button>
                 </div>
-              </div>
-            )}
+             </div>
+           )}
 
-            {/* Step 4: Salvando */}
-            {importStep === 4 && (
-              <div className="py-32 text-center animate-in zoom-in duration-500">
-                <Loader2 size={64} className="text-[#D4AF37] animate-spin mx-auto mb-8" />
-                <h3 className="text-[#D4AF37] font-cinzel text-xl font-bold mb-2">Salvando no Códex...</h3>
-                <p className="text-gray-500 text-sm">Persistindo alterações em lote nos processos selecionados.</p>
-              </div>
-            )}
-
-            {/* Step 5: Sucesso */}
-            {importStep === 5 && (
-              <div className="py-20 text-center animate-in zoom-in duration-500">
-                <CheckCircle2 size={80} className="text-green-500 mx-auto mb-8" />
-                <h3 className="text-white font-cinzel text-2xl font-bold mb-4">Importação Concluída!</h3>
-                <div className="max-w-xs mx-auto border border-white/5 bg-black/40 p-6 rounded-2xl mb-12">
-                   <p className="text-gray-400 text-sm mb-2">Registros atualizados:</p>
-                   <p className="text-4xl font-bold text-green-500">{linhasImportadas.filter(l => l.selecionado).length}</p>
-                </div>
-                <div className="flex justify-center gap-4">
-                  <button 
-                    onClick={() => { setImportStep(1); setLinhasImportadas([]); }}
-                    className="px-8 py-4 bg-transparent border border-[#d4af37]/30 text-[#d4af37] rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-[#d4af37]/10"
-                  >
-                    Importar Outra Planilha
-                  </button>
-                  <button 
-                    onClick={() => setIsImportadorOpen(false)}
-                    className="px-8 py-4 bg-white/5 text-white rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-white/10"
-                  >
-                    Voltar ao Portal
-                  </button>
-                </div>
-              </div>
-            )}
-
-          </div>
         </div>
-      )}
-
-      {/* Indicador de Status Remoto (Sempre Visível se mock) */}
-      <div className="fixed bottom-8 left-72 text-[10px] text-gray-500 uppercase tracking-widest flex items-center gap-3 bg-black/50 px-4 py-2 rounded-full border border-white/5 backdrop-blur-md">
-        <WifiOff size={12} className="text-[#D4AF37]" /> Modo Desmonstração (Mock Ativo)
       </div>
-
     </div>
   );
 }

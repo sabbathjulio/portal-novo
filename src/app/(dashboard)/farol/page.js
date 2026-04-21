@@ -15,7 +15,10 @@ export default function FarolDocsPage() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    let isMounted = true;
+    
     async function syncSupabase() {
+      if(!isMounted) return;
       setIsLoading(true);
       try {
         const { data, error } = await supabase.from('farol_documentacao').select(`
@@ -26,7 +29,7 @@ export default function FarolDocsPage() {
           )
         `);
         
-        if (!error && data) {
+        if (!error && data && isMounted) {
           const dadosReais = data.map(item => ({
             processo: item.numero_cnj || "S/N",
             reclamante: item.processos?.reclamante || "Nome não cadastrado",
@@ -50,9 +53,29 @@ export default function FarolDocsPage() {
       } catch(err) {
         console.error("Falha fatal na master", err);
       }
-      setIsLoading(false);
+      if(isMounted) setIsLoading(false);
     }
+    
+    // Initial fetch
     syncSupabase();
+
+    // Reatividade: Supabase Realtime (Opção A)
+    const channel = supabase.channel('farol-realtime-matrix')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'processos' }, () => syncSupabase())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'audiencias' }, () => syncSupabase())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'farol_documentacao' }, () => syncSupabase())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'financeiro' }, () => syncSupabase())
+      .subscribe();
+
+    // Fallback: Cache Invalidation On Focus (Opção B)
+    const handleFocus = () => syncSupabase();
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      isMounted = false;
+      window.removeEventListener('focus', handleFocus);
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const filtrados = useMemo(() => {
