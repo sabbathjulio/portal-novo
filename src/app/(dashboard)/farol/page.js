@@ -50,31 +50,39 @@ export default function FarolDocsPage() {
   const [modalObs, setModalObs] = useState("");
   const [modalOutros, setModalOutros] = useState("");
 
-  // Extrator Real do Supabase substituindo os Mocks
+  // Extrator Real do Supabase substituindo os Mocks (Motor Relacional JOIN)
   useEffect(() => {
     async function syncSupabase() {
       setIsLoading(true);
       try {
-        const { data, error } = await supabase.from('processos').select('*').limit(150);
+        const { data, error } = await supabase.from('farol_documentacao').select(`
+          numero_cnj, status_farol, is_urgente, checklist_arquivado, observacao_juridica,
+          processos ( reclamante, funcao, reu_principal, unidade, data_admissao, data_demissao )
+        `);
+
         if (!error && data) {
-          const dadosReais = data.map(p => ({
-            processo: p.processo || p.numero_cnj || "S/N",
-            reclamante: p.reclamante || "Nome não cadastrado",
-            funcao: p.funcao || "-",
-            audiencia: p.data_audiencia || "-",
-            reu: p.reu || p.empresa || "-",
-            unidade: p.unidade || "-",
-            status: "Solicitado", // Status assumido como padrão por enquanto
-            admissao: p.admissao || "-",
-            demissao: p.demissao || "-",
-            obs: "",
-            checklist: [],
-            urgente: false
+          const dadosReais = data.map(item => ({
+            processo: item.numero_cnj || "S/N",
+            reclamante: item.processos?.reclamante || "Nome não cadastrado",
+            funcao: item.processos?.funcao || "-",
+            audiencia: "-", // Reservado temporalmente até a tabela de Pautas ser ativada
+            reu: item.processos?.reu_principal || "-",
+            unidade: item.processos?.unidade || "-",
+            status: item.status_farol || "Solicitado",
+            admissao: item.processos?.data_admissao || "-",
+            demissao: item.processos?.data_demissao || "-",
+            obs: item.observacao_juridica || "",
+            checklist: item.checklist_arquivado || [],
+            urgente: item.is_urgente || false
           }));
+          
+          // Renderiza na tela removendo Mocks
           setBaseFarol(dadosReais);
+        } else if (error) {
+           console.error("Falha no cross-join relacional:", error);
         }
       } catch(err) {
-        console.error("Falha ao puxar a tabela master", err);
+        console.error("Falha fatal na master", err);
       }
       setIsLoading(false);
     }
@@ -600,7 +608,20 @@ export default function FarolDocsPage() {
                        <button onClick={() => window.print()} className="flex-1 py-4 border border-stitch-burgundy/20 bg-rose-50 dark:bg-zinc-900 text-stitch-burgundy font-inter font-bold text-[10px] tracking-widest rounded-xl hover:bg-stitch-burgundy hover:text-white transition-all flex items-center justify-center gap-2 uppercase shadow-sm">
                           <Printer size={16} /> Imprimir Checklist A4
                        </button>
-                       <button onClick={() => setSelectedProcess(null)} className="flex-1 py-4 bg-stitch-burgundy text-white font-inter font-bold text-[10px] tracking-widest rounded-xl hover:scale-[1.02] active:scale-[0.98] transition-transform flex items-center justify-center gap-2 uppercase shadow-md">
+                       <button onClick={async () => {
+                          try {
+                            const p = selectedProcess;
+                            await supabase.from('farol_documentacao')
+                               .update({
+                                  status_farol: p.status,
+                                  is_urgente: p.urgente,
+                                  checklist_arquivado: p.checklist,
+                                  observacao_juridica: modalObs
+                               })
+                               .eq('numero_cnj', p.processo);
+                            setSelectedProcess(null);
+                          } catch (e) { console.error("Erro ao gravar alterações:", e); }
+                       }} className="flex-1 py-4 bg-stitch-burgundy text-white font-inter font-bold text-[10px] tracking-widest rounded-xl hover:scale-[1.02] active:scale-[0.98] transition-transform flex items-center justify-center gap-2 uppercase shadow-md">
                           <Check size={16} /> Gravar Alterações
                        </button>
                     </div>
