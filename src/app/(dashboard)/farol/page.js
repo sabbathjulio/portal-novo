@@ -21,34 +21,41 @@ export default function FarolDocsPage() {
       if(!isMounted) return;
       setIsLoading(true);
       try {
-        const { data, error } = await supabase.from('farol_documentacao').select(`
-          numero_cnj, status_farol, is_urgente, checklist_arquivado, observacao_juridica,
-          processos ( 
-             reclamante, funcao, reu_principal, unidade, data_admissao, data_demissao, fase_atual, status_geral, risco,
-             audiencias ( tipo, data_hora )
-          )
-        `);
+        // Novo schema relacional: farol_documentos → processos → reclamantes + audiencias
+        const { data, error } = await supabase
+          .from('farol_documentos')
+          .select(`
+            numero_cnj, status_docs, progresso_percentual, observacoes_farol, ativo_no_farol,
+            processos (
+              status_fase, polo_passivo, unidade, data_distribuicao, vara, comarca, sentenca,
+              reclamantes ( nome, funcao, data_admissao, data_demissao, meses_trabalhados ),
+              audiencias ( tipo, modelo, data_hora )
+            )
+          `)
+          .eq('ativo_no_farol', true);
         
         if (!error && data && isMounted) {
           const dadosReais = data.map(item => ({
-            processo: item.numero_cnj || "S/N",
-            reclamante: item.processos?.reclamante || "Nome não cadastrado",
-            funcao: item.processos?.funcao || "-",
-            audiencias: item.processos?.audiencias || [],
-            reu: item.processos?.reu_principal || "-",
-            unidade: item.processos?.unidade || "-",
-            status: item.status_farol || "Solicitado",
-            fase: item.processos?.fase_atual || "Inicial",
-            risco: item.processos?.risco || "-",
-            admissao: item.processos?.data_admissao || "-",
-            demissao: item.processos?.data_demissao || "-",
-            obs: item.observacao_juridica || "",
-            checklist: item.checklist_arquivado || [],
-            urgente: item.is_urgente || false
+            processo:    item.numero_cnj || "S/N",
+            reclamante:  item.processos?.reclamantes?.nome || "Nome não cadastrado",
+            funcao:      item.processos?.reclamantes?.funcao || "-",
+            audiencias:  Array.isArray(item.processos?.audiencias)
+                           ? item.processos.audiencias
+                           : (item.processos?.audiencias ? [item.processos.audiencias] : []),
+            reu:         item.processos?.polo_passivo || "-",
+            unidade:     item.processos?.unidade || "-",
+            status:      item.status_docs || "Solicitado",
+            fase:        item.processos?.status_fase || "Inicial",
+            admissao:    item.processos?.reclamantes?.data_admissao || "-",
+            demissao:    item.processos?.reclamantes?.data_demissao || "-",
+            meses:       item.processos?.reclamantes?.meses_trabalhados || "0",
+            obs:         item.observacoes_farol || "",
+            progresso:   item.progresso_percentual ?? 0,
+            urgente:     false,
           }));
           setBaseFarol(dadosReais);
         } else if (error) {
-           console.error("Erro no Deep Join:", error);
+           console.error("Erro no Deep Join (farol_documentos):", error.message);
         }
       } catch(err) {
         console.error("Falha fatal na master", err);
@@ -56,18 +63,16 @@ export default function FarolDocsPage() {
       if(isMounted) setIsLoading(false);
     }
     
-    // Initial fetch
     syncSupabase();
 
-    // Reatividade: Supabase Realtime (Opção A)
-    const channel = supabase.channel('farol-realtime-matrix')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'processos' }, () => syncSupabase())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'audiencias' }, () => syncSupabase())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'farol_documentacao' }, () => syncSupabase())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'financeiro' }, () => syncSupabase())
+    // Realtime — escuta todas as tabelas relevantes
+    const channel = supabase.channel('farol-realtime-v2')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'processos' },       () => syncSupabase())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'reclamantes' },     () => syncSupabase())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'audiencias' },      () => syncSupabase())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'farol_documentos'}, () => syncSupabase())
       .subscribe();
 
-    // Fallback: Cache Invalidation On Focus (Opção B)
     const handleFocus = () => syncSupabase();
     window.addEventListener('focus', handleFocus);
 

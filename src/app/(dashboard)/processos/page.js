@@ -24,12 +24,27 @@ export default function AcervoPage() {
 
   const fetchProcessos = async () => {
     setIsLoading(true);
-    const { data, error } = await supabase.from('processos').select('*').order('created_at', { ascending: false });
+    const { data, error } = await supabase
+      .from('processos')
+      .select('*, reclamantes(*), audiencias(*)')
+      .order('numero_cnj', { ascending: false });
     if (!error && data) {
-      setAcervo(data);
+      // Normaliza os dados para manter compatibilidade com a UI existente
+      const normalizado = data.map(item => ({
+        ...item,
+        // reclamante e funcao vem da tabela reclamantes
+        reclamante: item.reclamantes?.nome || item.reclamante || "Nao informado",
+        funcao:     item.reclamantes?.funcao || "-",
+        reu:        item.polo_passivo || item.reu || "-",
+        // status lido de status_fase
+        fase_atual: item.status_fase || item.fase_atual || "Indefinido",
+        status_geral: item.status_fase || item.status_geral || "Indefinido",
+      }));
+      setAcervo(normalizado);
     }
     setIsLoading(false);
   };
+
 
   useEffect(() => {
     fetchProcessos();

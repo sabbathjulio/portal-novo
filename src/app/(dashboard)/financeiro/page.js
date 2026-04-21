@@ -36,18 +36,20 @@ export default function FinanceiroAcordosPage() {
     setIsLoading(true);
     const { data, error } = await supabase
       .from('financeiro')
-      .select('*, processos(reclamante, unidade, funcao, reu, advogado_adverso)')
-      .order('updated_at', { ascending: false });
+      .select('*, processos(unidade, advogado_adverso, polo_passivo, reclamantes(nome, funcao))')
+      .order('numero_cnj', { ascending: false });
 
     if (!error && data) {
       const dadosFormatados = data.map(item => ({ 
-        ...item, 
-        reclamante: item.processos?.reclamante || 'N/A', 
-        unidade: item.processos?.unidade || 'N/A',
-        funcao: item.processos?.funcao || 'N/A',
-        reu: item.processos?.reu || 'N/A',
-        advogado: item.processos?.advogado_adverso || 'N/A',
-        processo: item.processo_cnj 
+        ...item,
+        // campos remapeados do novo schema
+        reclamante:  item.processos?.reclamantes?.nome || 'N/A', 
+        unidade:     item.processos?.unidade || 'N/A',
+        funcao:      item.processos?.reclamantes?.funcao || 'N/A',
+        reu:         item.processos?.polo_passivo || 'N/A',
+        advogado:    item.processos?.advogado_adverso || 'N/A',
+        // chave de exibicao unificada
+        processo:    item.numero_cnj || item.processo_cnj || 'S/N',
       }));
       setDadosFinanceiros(dadosFormatados);
     }
