@@ -8,6 +8,7 @@ import {
   AlertCircle, Check, Map as MapIcon, Filter,
   FileSpreadsheet
 } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
 
 const ITENS_PADRAO = {
   admissionais: [
@@ -38,65 +39,52 @@ const ITENS_PADRAO = {
   ]
 };
 
-const MOCK_FAROL = [
-  {
-    processo: "1002341-50.2023.5.02.0001",
-    reclamante: "ROBERTO ALVES DA SILVA",
-    funcao: "Motorista Entregador",
-    audiencia: "25/04/2026",
-    reu: "BERNARDES LOGISTICA LTDA",
-    unidade: "São Paulo - Lapa",
-    status: "Solicitado",
-    admissao: "10/01/2020",
-    demissao: "15/12/2023",
-    obs: "Necessário focar no relatório de telemetria.",
-    checklist: ["Ficha de Registro", "Contrato de Trabalho"],
-    urgente: true
-  },
-  {
-    processo: "0010992-88.2023.5.15.0002",
-    reclamante: "AMANDA COSTA MOURA",
-    funcao: "Auxiliar de Logística",
-    audiencia: "19/04/2026",
-    reu: "TRANSPORTADORA RAPIDO S.A",
-    unidade: "Jundiaí - Matriz",
-    status: "Enviado",
-    admissao: "05/03/2021",
-    demissao: "10/05/2023",
-    obs: "Documentação completa enviada ao patrono Mendes.",
-    checklist: Object.values(ITENS_PADRAO).flat(),
-    urgente: false
-  },
-  {
-    processo: "1000542-10.2024.5.15.0100",
-    reclamante: "MARCELO PINTO",
-    funcao: "Gerente Operacional",
-    audiencia: "15/04/2026",
-    reu: "BERNARDES LOGISTICA LTDA",
-    unidade: "Campinas - Unid 2",
-    status: "Solicitado",
-    admissao: "20/06/2018",
-    demissao: "30/01/2024",
-    obs: "Aguardando retorno da filial sobre os espelhos de ponto.",
-    checklist: ["Ficha de Registro", "ASO (Admissional/Periódico)"],
-    urgente: false
-  }
-];
-
 export default function FarolDocsPage() {
   const [busca, setBusca] = useState({
     proc: "", rec: "", fun: "", data: "", reu: "", uni: "", status: ""
   });
-  const [baseFarol, setBaseFarol] = useState(MOCK_FAROL);
+  const [baseFarol, setBaseFarol] = useState([]);
   const [selectedProcess, setSelectedProcess] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   const [modalObs, setModalObs] = useState("");
   const [modalOutros, setModalOutros] = useState("");
 
+  // Extrator Real do Supabase substituindo os Mocks
+  useEffect(() => {
+    async function syncSupabase() {
+      setIsLoading(true);
+      try {
+        const { data, error } = await supabase.from('processos').select('*').limit(150);
+        if (!error && data) {
+          const dadosReais = data.map(p => ({
+            processo: p.processo || p.numero_cnj || "S/N",
+            reclamante: p.reclamante || "Nome não cadastrado",
+            funcao: p.funcao || "-",
+            audiencia: p.data_audiencia || "-",
+            reu: p.reu || p.empresa || "-",
+            unidade: p.unidade || "-",
+            status: "Solicitado", // Status assumido como padrão por enquanto
+            admissao: p.admissao || "-",
+            demissao: p.demissao || "-",
+            obs: "",
+            checklist: [],
+            urgente: false
+          }));
+          setBaseFarol(dadosReais);
+        }
+      } catch(err) {
+        console.error("Falha ao puxar a tabela master", err);
+      }
+      setIsLoading(false);
+    }
+    syncSupabase();
+  }, []);
+
   const calcularPrazo = (dataAud) => {
-    if (!dataAud || dataAud === "-") return { text: "-", color: "text-gray-500" };
+    if (!dataAud || dataAud === "-") return { text: "-", color: "text-slate-400 dark:text-zinc-600" };
     const pt = dataAud.split('/');
-    if (pt.length !== 3) return { text: "-", color: "text-gray-500" };
+    if (pt.length !== 3) return { text: "-", color: "text-slate-400 dark:text-zinc-600" };
     
     const dAud = new Date(pt[2], pt[1] - 1, pt[0]);
     const dHoje = new Date();
@@ -105,10 +93,10 @@ export default function FarolDocsPage() {
     
     const diff = Math.ceil((dAud - dHoje) / (86400000));
     
-    if (diff < 0) return { text: "VENCIDO", color: "text-red-500", icon: true };
-    if (diff === 0) return { text: "É HOJE", color: "text-orange-500", icon: false };
-    if (diff <= 5) return { text: `⚠️ ${diff} DIAS`, color: "text-[#D4AF37]", icon: false };
-    return { text: `FALTAM ${diff} DIAS`, color: "text-gray-400", icon: false };
+    if (diff < 0) return { text: "VENCIDO", color: "text-rose-600 dark:text-rose-500", icon: true };
+    if (diff === 0) return { text: "É HOJE", color: "text-amber-600 dark:text-amber-500", icon: false };
+    if (diff <= 5) return { text: `⚠️ ${diff} DIAS`, color: "text-stitch-burgundy dark:text-stitch-secondary", icon: false };
+    return { text: `FALTAM ${diff} DIAS`, color: "text-slate-400 dark:text-zinc-500", icon: false };
   };
 
   const filtrados = useMemo(() => {
@@ -350,57 +338,61 @@ export default function FarolDocsPage() {
              margin: 0 !important;
              padding: 0 !important;
           }
-          
-          .glassmorphism { background: none !important; border: none !important; box-shadow: none !important; }
         }
         
         .custom-scrollbar::-webkit-scrollbar { width: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(212, 175, 55, 0.2); border-radius: 10px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(212, 175, 55, 0.4); }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(128, 0, 32, 0.2); border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(128, 0, 32, 0.4); }
       `}</style>
       
       {/* UI Dashboard (Hidden on Print) */}
       <div className="print:hidden space-y-6 animate-in fade-in duration-500">
         
-        {/* Header Bar */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white/2 p-6 rounded-2xl border border-white/5">
+        {/* Header Bar - Adaptado pro Stitch Theme */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-stitch-white dark:bg-zinc-900 p-6 rounded-2xl border border-slate-200 dark:border-zinc-800 transition-colors shadow-sm">
           <div className="flex items-center gap-4">
-            <div className="p-3 bg-[#D4AF37]/10 rounded-xl ring-1 ring-[#D4AF37]/20">
-               <LayoutGrid className="text-[#D4AF37] w-8 h-8" />
+            <div className="p-3 bg-rose-50 dark:bg-zinc-800 rounded-xl border border-rose-100 dark:border-zinc-700">
+               <LayoutGrid className="text-stitch-burgundy dark:text-stitch-secondary w-8 h-8 transition-colors" />
             </div>
             <div>
-              <h1 className="font-cinzel text-3xl font-bold text-[#D4AF37] tracking-wider uppercase">Farol de Documentação</h1>
-              <p className="text-gray-500 text-xs tracking-widest uppercase font-inter">Gestão de Subsídios e Auditoria Processual</p>
+              <h1 className="font-newsreader text-3xl font-bold text-slate-900 dark:text-zinc-100 tracking-tight transition-colors">Farol de Documentação</h1>
+              <p className="text-slate-500 dark:text-zinc-400 text-xs tracking-widest uppercase font-bold mt-1">Gestão de Subsídios e Auditoria Processual</p>
             </div>
           </div>
 
           <div className="flex items-center gap-6">
-            <div className="flex gap-4 p-2 bg-black/40 border border-white/5 rounded-2xl">
+            <div className="flex gap-4 p-2 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-2xl transition-colors">
               <div className="px-4 py-2 text-center">
-                 <p className="text-[9px] text-gray-500 uppercase font-bold tracking-widest">Pendentes</p>
-                 <p className="text-xl font-bold text-orange-500 mono-num">{stats.pend}</p>
+                 <p className="text-[9px] text-slate-500 dark:text-zinc-500 uppercase font-bold tracking-widest">Pendentes</p>
+                 <p className="text-xl font-bold text-amber-600 dark:text-amber-500 mono-num transition-colors">{stats.pend}</p>
               </div>
-              <div className="px-4 py-2 text-center border-x border-white/5">
-                 <p className="text-[9px] text-gray-500 uppercase font-bold tracking-widest">Enviados</p>
-                 <p className="text-xl font-bold text-green-500 mono-num">{stats.env}</p>
+              <div className="px-4 py-2 text-center border-x border-slate-200 dark:border-zinc-800">
+                 <p className="text-[9px] text-slate-500 dark:text-zinc-500 uppercase font-bold tracking-widest">Enviados</p>
+                 <p className="text-xl font-bold text-emerald-600 dark:text-emerald-500 mono-num transition-colors">{stats.env}</p>
               </div>
               <div className="px-4 py-2 text-center">
-                 <p className="text-[9px] text-gray-500 uppercase font-bold tracking-widest">Total</p>
-                 <p className="text-xl font-bold text-white mono-num">{stats.total}</p>
+                 <p className="text-[9px] text-slate-500 dark:text-zinc-500 uppercase font-bold tracking-widest">Total</p>
+                 <p className="text-xl font-bold text-slate-800 dark:text-zinc-200 mono-num transition-colors">{isLoading ? "..." : stats.total}</p>
               </div>
             </div>
-            <button className="flex items-center gap-3 px-6 py-4 bg-gradient-to-r from-[#D4AF37] to-[#B8860B] text-black font-cinzel font-bold text-xs uppercase tracking-widest rounded-xl hover:scale-105 transition-all shadow-xl shadow-[#D4AF37]/10 disabled:opacity-50">
+            <button className="flex items-center gap-3 px-6 py-4 bg-stitch-burgundy hover:bg-stitch-burgundy-dark text-white font-inter font-bold text-xs uppercase tracking-widest rounded-xl transition-all shadow-md disabled:opacity-50">
                <Printer size={16} /> Relatório Consolidado
             </button>
           </div>
         </div>
 
         {/* Filters and Data Grid */}
-        <div className="glassmorphism rounded-2xl border border-white/5 overflow-hidden border-t-2 border-t-[#D4AF37]/20">
+        <div className="bg-stitch-white dark:bg-zinc-900 rounded-2xl border border-slate-200 dark:border-zinc-800 overflow-hidden shadow-sm transition-colors">
           <div className="overflow-x-auto">
+            {isLoading ? (
+               <div className="p-20 flex flex-col items-center justify-center min-h-[400px]">
+                  <RefreshCw className="w-8 h-8 text-stitch-burgundy dark:text-stitch-secondary animate-spin mb-4" />
+                  <p className="text-sm text-slate-500 font-bold uppercase tracking-widest">Lendo Matriz Processual...</p>
+               </div>
+            ) : (
             <table className="w-full text-left min-w-[1200px] table-fixed">
               <thead className="sticky top-0 z-10">
-                <tr className="bg-black/60 border-b border-white/10">
+                <tr className="bg-slate-50 dark:bg-[#151517] border-b border-slate-200 dark:border-zinc-800 transition-colors">
                    {[
                      { label: "Processo", icon: Hash, key: 'proc', w: '180px' },
                      { label: "Reclamante", icon: User, key: 'rec', w: '250px' },
@@ -413,17 +405,17 @@ export default function FarolDocsPage() {
                    ].map((col, idx) => (
                      <th key={idx} className="p-6 align-top" style={{ width: col.w }}>
                         <div className="flex justify-between items-center mb-4">
-                           <span className="text-[10px] text-[#D4AF37] font-bold uppercase tracking-[0.2em]">{col.label}</span>
-                           <col.icon size={12} className="text-[#D4AF37]/40" />
+                           <span className="text-[10px] text-slate-600 dark:text-zinc-400 font-bold uppercase tracking-[0.2em] transition-colors">{col.label}</span>
+                           <col.icon size={12} className="text-slate-400 dark:text-zinc-600" />
                         </div>
                         {!col.noFilter && (
                            <div className="relative group">
-                              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-600 group-focus-within:text-[#D4AF37] transition-colors" />
+                              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400 group-focus-within:text-stitch-burgundy transition-colors" />
                               {col.type === 'select' ? (
                                 <select 
                                   value={busca[col.key]}
                                   onChange={(e) => setBusca(p => ({...p, [col.key]: e.target.value}))}
-                                  className="w-full bg-black/40 border border-white/10 rounded-lg py-2 pl-8 pr-2 text-[10px] text-white focus:border-[#D4AF37]/40 outline-none appearance-none cursor-pointer"
+                                  className="w-full bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-lg py-2 pl-8 pr-2 text-[10px] text-slate-700 dark:text-zinc-300 focus:border-stitch-burgundy outline-none appearance-none cursor-pointer transition-colors"
                                 >
                                   <option value="">TODOS</option>
                                   <option value="Solicitado">SOLICITADO</option>
@@ -435,7 +427,7 @@ export default function FarolDocsPage() {
                                   placeholder="Filtrar..."
                                   value={busca[col.key]}
                                   onChange={(e) => setBusca(p => ({...p, [col.key]: e.target.value}))}
-                                  className="w-full bg-black/40 border border-white/10 rounded-lg py-2 pl-8 pr-4 text-[10px] text-white focus:border-[#D4AF37]/40 outline-none transition-all"
+                                  className="w-full bg-white dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-lg py-2 pl-8 pr-4 text-[10px] text-slate-700 dark:text-zinc-300 focus:border-stitch-burgundy outline-none transition-colors"
                                 />
                               )}
                            </div>
@@ -444,39 +436,39 @@ export default function FarolDocsPage() {
                    ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/5">
+              <tbody className="divide-y divide-slate-100 dark:divide-zinc-800 border-x border-transparent">
                 {filtrados.map((p, idx) => {
                   const prazo = calcularPrazo(p.audiencia);
                   const totalItens = Object.values(ITENS_PADRAO).flat().length;
                   const perc = Math.round(((p.checklist || []).length / totalItens) * 100);
                   
                   return (
-                    <tr key={idx} className={`hover:bg-white/5 transition-colors group ${p.urgente ? 'bg-red-500/5' : ''}`}>
-                      <td className="p-6 font-mono text-xs text-gray-400 group-hover:text-white transition-colors">{p.processo}</td>
+                    <tr key={idx} className={`hover:bg-slate-50 dark:hover:bg-zinc-800/50 transition-colors group ${p.urgente ? 'bg-rose-50 dark:bg-rose-900/10' : ''}`}>
+                      <td className="p-6 font-mono text-xs text-slate-500 dark:text-zinc-400 group-hover:text-slate-800 dark:group-hover:text-zinc-200 transition-colors">{p.processo}</td>
                       <td className="p-6">
-                        <p onClick={() => handleOpenModal(p)} className="text-sm font-bold text-white uppercase cursor-pointer hover:text-[#D4AF37] transition-all dropdown-toggle p-1 -m-1 rounded">
+                        <p onClick={() => handleOpenModal(p)} className="text-sm font-bold text-slate-800 dark:text-zinc-200 uppercase cursor-pointer hover:text-stitch-burgundy dark:hover:text-stitch-secondary transition-all p-1 -m-1 rounded">
                           {p.reclamante}
                         </p>
                         {/* Barra de Progresso do Checklist */}
                         <div className="mt-2 flex items-center gap-3">
-                           <div className="flex-1 h-1 bg-black/40 rounded-full overflow-hidden border border-white/5">
-                              <div className={`h-full transition-all duration-1000 ${perc === 100 ? 'bg-green-500' : 'bg-[#D4AF37]/60'}`} style={{ width: `${perc}%` }} />
+                           <div className="flex-1 h-1 bg-slate-200 dark:bg-zinc-800 rounded-full overflow-hidden">
+                              <div className={`h-full transition-all duration-1000 ${perc === 100 ? 'bg-emerald-500' : 'bg-stitch-secondary'}`} style={{ width: `${perc}%` }} />
                            </div>
-                           <span className="text-[9px] font-bold text-gray-600">{perc}%</span>
+                           <span className="text-[9px] font-bold text-slate-400 dark:text-zinc-500">{perc}%</span>
                         </div>
                       </td>
-                      <td className="p-6 text-xs text-gray-300 font-medium truncate" title={p.funcao}>{p.funcao}</td>
-                      <td className="p-6 font-mono text-xs text-gray-500">{p.audiencia}</td>
+                      <td className="p-6 text-xs text-slate-600 dark:text-zinc-400 font-medium truncate" title={p.funcao}>{p.funcao}</td>
+                      <td className="p-6 font-mono text-xs text-slate-500 dark:text-zinc-500">{p.audiencia}</td>
                       <td className="p-6">
                          <div className={`flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest ${prazo.color}`}>
                             {prazo.icon && <AlertCircle size={12} />}
                             {prazo.text}
                          </div>
                       </td>
-                      <td className="p-6 text-xs text-gray-400 italic truncate" title={p.reu}>{p.reu}</td>
-                      <td className="p-6 text-xs text-gray-400 font-bold truncate" title={p.unidade}>{p.unidade}</td>
+                      <td className="p-6 text-xs text-slate-500 dark:text-zinc-500 italic truncate" title={p.reu}>{p.reu}</td>
+                      <td className="p-6 text-xs text-slate-600 dark:text-zinc-400 font-bold truncate" title={p.unidade}>{p.unidade}</td>
                       <td className="p-6">
-                         <span className={`px-3 py-1 rounded-full text-[9px] font-bold uppercase border ${p.status === 'Enviado' ? 'bg-green-500/10 text-green-500 border-green-500/30' : 'bg-orange-500/10 text-orange-500 border-orange-500/30'}`}>
+                         <span className={`px-3 py-1 rounded-full text-[9px] font-bold uppercase border ${p.status === 'Enviado' ? 'bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-800' : 'bg-amber-50 text-amber-600 border-amber-200 dark:bg-amber-900/20 dark:text-amber-500 dark:border-amber-800'}`}>
                             {p.status}
                          </span>
                       </td>
@@ -485,47 +477,47 @@ export default function FarolDocsPage() {
                 })}
               </tbody>
             </table>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Modal de Gestão Documental */}
       {selectedProcess && (
-        <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-center justify-center p-4 print:hidden animate-in fade-in duration-300 pointer-events-auto">
-          <div className="bg-[#0B1120] border border-white/10 w-full max-w-4xl max-h-[95vh] overflow-y-auto rounded-3xl shadow-[0_0_100px_rgba(212,175,55,0.05)] flex flex-col pointer-events-auto" onClick={e => e.stopPropagation()}>
-            
-            <div className="sticky top-0 bg-[#0B1120] border-b border-white/5 p-8 flex justify-between items-center z-10 shadow-lg">
+        <div className="fixed inset-0 bg-black/40 dark:bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:hidden animate-in fade-in duration-300 pointer-events-auto">
+          <div className="bg-stitch-bg dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 w-full max-w-4xl max-h-[95vh] overflow-y-auto rounded-3xl shadow-xl flex flex-col pointer-events-auto" onClick={e => e.stopPropagation()}>
+             {/* Header Modal */}
+             <div className="sticky top-0 bg-stitch-bg dark:bg-zinc-950 border-b border-slate-200 dark:border-zinc-800 p-8 flex justify-between items-center z-10">
                <div className="flex items-center gap-4">
-                  <div className="p-4 bg-[#D4AF37]/10 rounded-2xl ring-1 ring-[#D4AF37]/30">
-                     <FileSpreadsheet className="text-[#D4AF37] w-7 h-7" />
+                  <div className="p-4 bg-rose-50 dark:bg-zinc-900 rounded-2xl border border-rose-100 dark:border-zinc-800">
+                     <FileSpreadsheet className="text-stitch-burgundy dark:text-stitch-secondary w-7 h-7" />
                   </div>
                   <div>
-                    <h2 className="font-cinzel text-xl font-bold text-white tracking-widest uppercase">{selectedProcess.reclamante}</h2>
-                    <p className="text-[10px] text-gray-600 font-mono tracking-tighter uppercase">{selectedProcess.processo} • {selectedProcess.unidade}</p>
+                    <h2 className="font-newsreader text-2xl font-bold text-slate-900 dark:text-zinc-100 tracking-tight uppercase">{selectedProcess.reclamante}</h2>
+                    <p className="text-[10px] text-slate-500 font-mono tracking-tighter uppercase mt-1">{selectedProcess.processo} • {selectedProcess.unidade}</p>
                   </div>
                </div>
-               <button onClick={() => setSelectedProcess(null)} className="p-3 bg-white/5 rounded-full text-gray-400 hover:text-white hover:bg-red-500/20 transition-all border border-transparent hover:border-red-500/30"><X size={20}/></button>
+               <button onClick={() => setSelectedProcess(null)} className="p-3 bg-white dark:bg-zinc-900 rounded-full text-slate-400 hover:text-rose-600 border border-slate-200 dark:border-zinc-800 hover:border-rose-200 transition-all"><X size={20}/></button>
             </div>
 
             <div className="p-10 space-y-8">
                <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
                   {/* Checklist Dinâmico */}
                   <div className="space-y-6">
-                    <h4 className="font-cinzel text-xs text-[#D4AF37] font-bold uppercase tracking-[0.2em] border-b border-white/5 pb-2">Status do Subsídio</h4>
+                    <h4 className="font-inter text-xs text-slate-600 dark:text-zinc-400 font-bold uppercase tracking-[0.2em] border-b border-slate-200 dark:border-zinc-800 pb-2">Status do Subsídio</h4>
                     
                     <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
                       {Object.entries(ITENS_PADRAO).map(([cat, itens]) => (
-                        <div key={cat} className="space-y-3 bg-white/2 p-4 rounded-xl border border-white/5 ring-1 ring-white/5">
-                           <p className="text-[9px] font-bold text-[#D4AF37]/70 uppercase tracking-[0.1em] mb-1">{cat}</p>
+                        <div key={cat} className="space-y-3 bg-white dark:bg-zinc-900 p-4 rounded-xl border border-slate-100 dark:border-zinc-800 shadow-sm">
+                           <p className="text-[9px] font-bold text-stitch-burgundy dark:text-stitch-secondary uppercase tracking-[0.1em] mb-1">{cat}</p>
                            <div className="space-y-2">
                              {itens.map((it, i) => {
                                const isChecked = selectedProcess.checklist?.includes(it);
                                return (
-                                 <label key={i} className="flex items-center gap-3 cursor-pointer group hover:bg-white/5 p-1.5 -ml-1.5 rounded-lg transition-all">
-                                    <div className={`w-5 h-5 rounded border transition-all flex items-center justify-center shadow-inner ${isChecked ? 'bg-[#D4AF37] border-[#D4AF37] shadow-[0_0_10px_rgba(212,175,55,0.2)]' : 'border-white/20 bg-black/40 group-hover:border-[#D4AF37]/50'}`}>
-                                      {isChecked && <Check size={12} className="text-black font-bold" />}
+                                 <label key={i} className="flex items-center gap-3 cursor-pointer group hover:bg-slate-50 dark:hover:bg-zinc-800 p-1.5 -ml-1.5 rounded-lg transition-all">
+                                    <div className={`w-5 h-5 rounded border transition-all flex items-center justify-center shadow-inner ${isChecked ? 'bg-stitch-burgundy border-stitch-burgundy' : 'border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 group-hover:border-stitch-secondary'}`}>
+                                      {isChecked && <Check size={12} className="text-white font-bold" />}
                                     </div>
-                                    <span className={`text-xs transition-colors ${isChecked ? 'text-white font-medium' : 'text-gray-400 group-hover:text-gray-300'}`}>{it}</span>
+                                    <span className={`text-xs transition-colors ${isChecked ? 'text-slate-800 dark:text-zinc-200 font-medium' : 'text-slate-500 dark:text-zinc-500 group-hover:text-slate-700 dark:group-hover:text-zinc-400'}`}>{it}</span>
                                     <input 
                                       type="checkbox" 
                                       className="hidden" 
@@ -549,30 +541,30 @@ export default function FarolDocsPage() {
 
                   {/* Configurações Adicionais */}
                   <div className="space-y-8 flex flex-col h-full">
-                    <div className="space-y-6 flex-1 bg-white/2 p-6 border border-white/5 rounded-2xl">
+                    <div className="space-y-6 flex-1 bg-white dark:bg-zinc-900 p-6 border border-slate-100 dark:border-zinc-800 rounded-2xl shadow-sm">
                       <div className="space-y-2">
-                         <label className="text-[10px] text-gray-500 uppercase font-bold tracking-widest">Outros Documentos Específicos</label>
+                         <label className="text-[10px] text-slate-500 uppercase font-bold tracking-widest">Outros Documentos Específicos</label>
                          <input 
                            type="text" 
                            value={modalOutros}
                            onChange={(e) => setModalOutros(e.target.value)}
                            placeholder="Ex: Receituário, Laudo Frota..."
-                           className="w-full bg-black/40 border border-white/10 p-3 rounded-xl text-xs text-white focus:border-[#D4AF37]/50 focus:ring-1 focus:ring-[#D4AF37]/30 outline-none transition-all"
+                           className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 p-3 rounded-xl text-xs text-slate-800 dark:text-zinc-200 focus:border-stitch-burgundy focus:ring-1 focus:ring-stitch-burgundy/30 outline-none transition-all"
                          />
                       </div>
                       <div className="space-y-2">
-                         <label className="text-[10px] text-gray-500 uppercase font-bold tracking-widest">Observação da Pendência / Jurídica</label>
+                         <label className="text-[10px] text-slate-500 uppercase font-bold tracking-widest">Observação da Pendência / Jurídica</label>
                          <textarea 
                            rows={6}
                            value={modalObs}
                            onChange={(e) => setModalObs(e.target.value)}
                            placeholder="Insira apontamentos táticos..."
-                           className="w-full bg-black/40 border border-white/10 p-3 rounded-xl text-xs text-white focus:border-[#D4AF37]/50 focus:ring-1 focus:ring-[#D4AF37]/30 outline-none transition-all resize-none"
+                           className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 p-3 rounded-xl text-xs text-slate-800 dark:text-zinc-200 focus:border-stitch-burgundy focus:ring-1 focus:ring-stitch-burgundy/30 outline-none transition-all resize-none"
                          />
                       </div>
                       <div className="flex gap-4">
                         <div className="flex-1 space-y-2">
-                           <label className="text-[10px] text-gray-500 uppercase font-bold tracking-widest">Status Geral</label>
+                           <label className="text-[10px] text-slate-500 uppercase font-bold tracking-widest">Status Geral</label>
                            <select 
                             value={selectedProcess.status}
                             onChange={(e) => {
@@ -580,14 +572,14 @@ export default function FarolDocsPage() {
                               setBaseFarol(p => p.map(x => x.processo === selectedProcess.processo ? {...x, status: s} : x));
                               setSelectedProcess(p => ({...p, status: s}));
                             }}
-                            className="w-full bg-black/40 border border-white/10 p-3 rounded-xl text-xs text-white appearance-none cursor-pointer focus:border-[#D4AF37]/50 focus:ring-1 focus:ring-[#D4AF37]/30 outline-none transition-all"
+                            className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 p-3 rounded-xl text-xs text-slate-800 dark:text-zinc-200 appearance-none cursor-pointer focus:border-stitch-burgundy outline-none transition-all"
                            >
                              <option value="Solicitado">SOLICITADO</option>
                              <option value="Enviado">ENVIADO</option>
                            </select>
                         </div>
                         <div className="flex-1 flex items-end">
-                           <label className={`flex items-center gap-3 p-3 border rounded-xl cursor-pointer w-full group transition-all ${selectedProcess.urgente ? 'bg-red-500/10 border-red-500/30' : 'bg-black/40 border-white/10'}`}>
+                           <label className={`flex items-center gap-3 p-3 border rounded-xl cursor-pointer w-full group transition-all ${selectedProcess.urgente ? 'bg-rose-50 dark:bg-rose-900/10 border-rose-200 dark:border-rose-800' : 'bg-slate-50 dark:bg-zinc-950 border-slate-200 dark:border-zinc-800'}`}>
                               <input 
                                 type="checkbox" 
                                 checked={selectedProcess.urgente}
@@ -596,19 +588,19 @@ export default function FarolDocsPage() {
                                   setBaseFarol(p => p.map(x => x.processo === selectedProcess.processo ? {...x, urgente: u} : x));
                                   setSelectedProcess(p => ({...p, urgente: u}));
                                 }}
-                                className="w-4 h-4 rounded border-gray-700 bg-black text-red-500 focus:ring-red-500" 
+                                className="w-4 h-4 rounded border-slate-300 text-rose-600 focus:ring-rose-500" 
                               />
-                              <span className={`text-[10px] uppercase font-bold tracking-widest transition-colors ${selectedProcess.urgente ? 'text-red-400' : 'text-gray-500 group-hover:text-red-400/70'}`}>Urgência Alpha</span>
+                              <span className={`text-[10px] uppercase font-bold tracking-widest transition-colors ${selectedProcess.urgente ? 'text-rose-600' : 'text-slate-500'}`}>Urgência Alpha</span>
                            </label>
                         </div>
                       </div>
                     </div>
 
                     <div className="flex gap-4">
-                       <button onClick={() => window.print()} className="flex-1 py-4 border border-[#D4AF37]/20 bg-[#D4AF37]/10 text-[#D4AF37] font-cinzel font-bold text-[10px] tracking-widest rounded-xl hover:bg-[#D4AF37] hover:text-black transition-all flex items-center justify-center gap-2 uppercase shadow-lg shadow-[#D4AF37]/5">
+                       <button onClick={() => window.print()} className="flex-1 py-4 border border-stitch-burgundy/20 bg-rose-50 dark:bg-zinc-900 text-stitch-burgundy font-inter font-bold text-[10px] tracking-widest rounded-xl hover:bg-stitch-burgundy hover:text-white transition-all flex items-center justify-center gap-2 uppercase shadow-sm">
                           <Printer size={16} /> Imprimir Checklist A4
                        </button>
-                       <button onClick={() => setSelectedProcess(null)} className="flex-1 py-4 bg-gradient-to-r from-[#D4AF37] to-[#B8860B] text-black font-cinzel font-bold text-[10px] tracking-widest rounded-xl hover:scale-[1.02] active:scale-[0.98] transition-transform flex items-center justify-center gap-2 uppercase shadow-xl shadow-[#D4AF37]/10">
+                       <button onClick={() => setSelectedProcess(null)} className="flex-1 py-4 bg-stitch-burgundy text-white font-inter font-bold text-[10px] tracking-widest rounded-xl hover:scale-[1.02] active:scale-[0.98] transition-transform flex items-center justify-center gap-2 uppercase shadow-md">
                           <Check size={16} /> Gravar Alterações
                        </button>
                     </div>
@@ -619,7 +611,6 @@ export default function FarolDocsPage() {
         </div>
       )}
 
-      {/* Renderiza o template invisivel pro usuario mas visivel na impressao devido ao @media print configurado */}
       {renderizarChecklistA4()}
     </div>
   );
