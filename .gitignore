@@ -52,3 +52,10 @@ next-env.d.ts
 *.zip
 Portal juridico/
 Antigravity/
+
+# OpenNext
+.open-next
+
+.dev.vars*
+!.dev.vars.example
+!.env.example
